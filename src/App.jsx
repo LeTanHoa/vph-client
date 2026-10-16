@@ -10,7 +10,7 @@ import AdminLogin from './components/AdminLogin';
 import QrRegistrationModal from './components/QrRegistrationModal';
 import DNTraceLogo from './components/DNTraceLogo';
 import DNTraceFooter from './components/DNTraceFooter';
-import { fetchApiStatus, isUserLoggedIn, clearLoginSession } from './services/api';
+import { fetchApiStatus, isUserLoggedIn, clearLoginSession, slugify } from './services/api';
 
 export default function App() {
   // Determine initial view from browser URL
@@ -24,9 +24,26 @@ export default function App() {
     return 'traceability';
   };
 
+  // Determine initial product slug from browser URL or query string
+  const getInitialProductSlug = () => {
+    if (typeof window !== 'undefined') {
+      // 1. Check query parameter ?code=...
+      const params = new URLSearchParams(window.location.search);
+      const codeParam = params.get('code');
+      if (codeParam) return codeParam.trim();
+
+      // 2. Check pathname /ten-san-pham
+      const path = window.location.pathname.replace(/^\/+/, '').split('/')[0];
+      if (path && path.toLowerCase() !== 'admin') {
+        return decodeURIComponent(path).trim();
+      }
+    }
+    return null;
+  };
+
   const [currentView, setCurrentView] = useState(getInitialView);
   const [isAuthenticated, setIsAuthenticated] = useState(isUserLoggedIn);
-  const [selectedProductId, setSelectedProductId] = useState(null);
+  const [selectedProductId, setSelectedProductId] = useState(getInitialProductSlug);
   const [qrRegistrationOpen, setQrRegistrationOpen] = useState(false);
   const [dbStatus, setDbStatus] = useState(null);
 
@@ -38,6 +55,14 @@ export default function App() {
         setCurrentView('admin');
       } else {
         setCurrentView('traceability');
+        const cleanPath = window.location.pathname.replace(/^\/+/, '').split('/')[0];
+        const params = new URLSearchParams(window.location.search);
+        const codeParam = params.get('code');
+        if (cleanPath && cleanPath.toLowerCase() !== 'admin') {
+          setSelectedProductId(decodeURIComponent(cleanPath).trim());
+        } else if (codeParam) {
+          setSelectedProductId(codeParam.trim());
+        }
       }
     };
     window.addEventListener('popstate', handlePopState);
@@ -50,7 +75,11 @@ export default function App() {
     if (viewName === 'admin') {
       window.history.pushState({}, '', '/admin');
     } else {
-      window.history.pushState({}, '', '/');
+      if (selectedProductId) {
+        window.history.pushState({}, '', `/${selectedProductId}`);
+      } else {
+        window.history.pushState({}, '', '/');
+      }
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -60,9 +89,28 @@ export default function App() {
     fetchApiStatus().then(status => setDbStatus(status));
   }, [currentView, isAuthenticated]);
 
-  const handleViewProduct = (productId) => {
-    setSelectedProductId(productId);
-    navigateToView('traceability');
+  const handleViewProduct = (productOrSlug) => {
+    let slug = '';
+    if (typeof productOrSlug === 'object' && productOrSlug !== null) {
+      slug = productOrSlug.slug || slugify(productOrSlug.name);
+    } else if (typeof productOrSlug === 'string') {
+      slug = productOrSlug;
+    }
+    setSelectedProductId(slug);
+    setCurrentView('traceability');
+    if (slug) {
+      window.history.pushState({}, '', `/${slug}`);
+    } else {
+      window.history.pushState({}, '', '/');
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleProductChange = (product) => {
+    if (!product) return;
+    const slug = product.slug || slugify(product.name);
+    setSelectedProductId(slug);
+    window.history.pushState({}, '', `/${slug}`);
   };
 
   const handleLogout = () => {
@@ -119,6 +167,7 @@ export default function App() {
           <>
             <ProductTraceabilityPage
               selectedProductId={selectedProductId}
+              onProductChange={handleProductChange}
               onOpenQrRegister={() => setQrRegistrationOpen(true)}
               onNavigateToAdmin={() => navigateToView('admin')}
             />

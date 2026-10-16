@@ -48,7 +48,8 @@ import {
   uploadMultipleImagesToCloudinary,
   fetchQrRequests,
   updateQrRequestStatus,
-  deleteQrRequest
+  deleteQrRequest,
+  slugify
 } from '../services/api';
 import DNTraceLogo from './DNTraceLogo';
 
@@ -87,6 +88,7 @@ export default function AdminProductManager({
   // Form State
   const initialFormState = {
     name: '',
+    slug: '',
     system: 'CỔNG TRUY XUẤT NGUỒN GỐC DNTRACE (dntrace.com)',
     provider: 'dntrace.com',
     status: 'ĐÃ XÁC THỰC THÀNH CÔNG',
@@ -152,7 +154,8 @@ export default function AdminProductManager({
     const randomCode = 'DNTRACE-' + Math.floor(100000 + Math.random() * 900000);
     setFormData({
       ...initialFormState,
-      verificationCode: randomCode
+      verificationCode: randomCode,
+      slug: ''
     });
     setEditingProduct(null);
     setModalTab('general');
@@ -164,6 +167,7 @@ export default function AdminProductManager({
     setEditingProduct(product);
     setFormData({
       name: product.name || '',
+      slug: product.slug || slugify(product.name || ''),
       system: product.system || 'CỔNG TRUY XUẤT NGUỒN GỐC DNTRACE (dntrace.com)',
       provider: product.provider || 'dntrace.com',
       status: product.status || 'ĐÃ XÁC THỰC THÀNH CÔNG',
@@ -203,6 +207,7 @@ export default function AdminProductManager({
     setFormData({
       ...initialFormState,
       name: req.productName || '',
+      slug: slugify(req.productName || ''),
       verificationCode: randomCode,
       manufacturer: {
         name: req.businessName || '',
@@ -448,20 +453,13 @@ export default function AdminProductManager({
             {/* Logo & Portal Title */}
             <div className="flex items-center gap-3">
               <DNTraceLogo className="h-8" isWhite={true} pillBackground={true} />
-              <div className="hidden sm:block border-l border-white/20 pl-3">
-                <span className="text-xs font-black uppercase tracking-wider text-[#84CC16] block leading-tight">
-                  Khu Vực Quản Trị Hệ Thống
-                </span>
-                <span className="text-[10px] text-stone-300 block">
-                  Quản lý sản phẩm &amp; Cấp mã QR truy xuất
-                </span>
-              </div>
+             
             </div>
 
             {/* Top Right Actions */}
             <div className="flex items-center gap-2 sm:gap-3">
               {/* DB Status Badge */}
-              <div
+              {/* <div
                 title={statusInfo?.dbConnected ? 'Đã kết nối cơ sở dữ liệu MongoDB' : 'Đang chạy bộ nhớ In-Memory tạm thời'}
                 className="hidden md:flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 text-xs border border-white/10"
               >
@@ -469,7 +467,7 @@ export default function AdminProductManager({
                 <span className="text-[11px] font-medium text-stone-200">
                   {statusInfo?.dbConnected ? 'MongoDB Đã Kết Nối' : 'In-Memory Cache'}
                 </span>
-              </div>
+              </div> */}
 
               {/* Back to Traceability */}
               <button
@@ -627,7 +625,17 @@ export default function AdminProductManager({
                                 <h4 className="font-bold text-stone-900 leading-tight text-xs sm:text-sm">
                                   {p.name}
                                 </h4>
-                                <span className="text-[11px] text-stone-500 block mt-0.5 truncate">
+                                <a
+                                  href={`/${p.slug || slugify(p.name)}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-[11px] font-mono text-[#0f2d22] font-semibold hover:underline inline-flex items-center gap-1 mt-0.5"
+                                  title="Mở liên kết sản phẩm"
+                                >
+                                  <span>/{p.slug || slugify(p.name)}</span>
+                                  <ExternalLink className="w-2.5 h-2.5 opacity-60" />
+                                </a>
+                                <span className="text-[11px] text-stone-500 block truncate">
                                   {p.netWeight && `KL: ${p.netWeight}`} &bull; {p.expiry && `HSD: ${p.expiry}`}
                                 </span>
                               </div>
@@ -689,7 +697,7 @@ export default function AdminProductManager({
                             <div className="inline-flex items-center gap-1.5">
                               {/* View on traceability */}
                               <button
-                                onClick={() => onViewProduct(p._id || p.verificationCode)}
+                                onClick={() => onViewProduct(p.slug || slugify(p.name))}
                                 className="p-2 rounded-xl bg-stone-100 hover:bg-[#0f2d22] text-stone-600 hover:text-white transition cursor-pointer"
                                 title="Xem trang truy xuất"
                               >
@@ -1042,12 +1050,40 @@ export default function AdminProductManager({
                         type="text"
                         required
                         value={formData.name}
-                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setFormData(prev => ({
+                            ...prev,
+                            name: val,
+                            slug: (!editingProduct || !prev.slug) ? slugify(val) : prev.slug
+                          }));
+                        }}
                         placeholder="Ví dụ: Kẹo dừa dẻo Ngọc Hải"
                         className="w-full text-xs sm:text-sm p-3 rounded-xl border border-stone-200 outline-none focus:border-[#0f2d22] bg-white"
                       />
                     </div>
 
+                    <div>
+                      <label className="block text-xs font-bold text-stone-700 mb-1">
+                        Đường dẫn tĩnh / Slug (URL sản phẩm)
+                      </label>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-stone-400 text-xs font-mono select-none">/</span>
+                        <input
+                          type="text"
+                          value={formData.slug}
+                          onChange={(e) => setFormData({ ...formData, slug: slugify(e.target.value) })}
+                          placeholder="keo-dua-deo-ngoc-hai"
+                          className="w-full text-xs sm:text-sm p-3 rounded-xl border border-stone-200 font-mono text-[#0f2d22] outline-none focus:border-[#0f2d22] bg-white"
+                        />
+                      </div>
+                      <span className="text-[10px] text-stone-400 mt-1 block font-mono truncate">
+                        Link xem: {typeof window !== 'undefined' ? window.location.origin : 'https://dntrace.com'}/{formData.slug || slugify(formData.name)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-bold text-stone-700 mb-1">
                         Mã định danh xác thực dntrace <span className="text-rose-500">*</span>
@@ -1690,72 +1726,86 @@ export default function AdminProductManager({
       {/* ======================================================== */}
       {/* MODAL 2: QR CODE PREVIEW & DOWNLOAD */}
       {/* ======================================================== */}
-      {isQrModalOpen && selectedQrProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/75 backdrop-blur-sm">
-          <div className="relative w-full max-w-md bg-white rounded-3xl p-6 sm:p-8 shadow-2xl border border-stone-200 text-center space-y-4">
-            <button
-              onClick={() => setIsQrModalOpen(false)}
-              className="absolute top-4 right-4 p-2 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-600 transition cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
+      {isQrModalOpen && selectedQrProduct && (() => {
+        const productSlug = selectedQrProduct.slug || slugify(selectedQrProduct.name);
+        const origin = typeof window !== 'undefined' ? window.location.origin : 'https://dntrace.com';
+        const productUrl = `${origin}/${productSlug}`;
+        const qrImage240 = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(productUrl)}`;
+        const qrImage600 = `https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=${encodeURIComponent(productUrl)}`;
 
-            <div className="w-12 h-12 rounded-2xl bg-[#84CC16]/20 text-[#0f2d22] flex items-center justify-center mx-auto font-black">
-              <QrCode className="w-7 h-7" />
-            </div>
-
-            <h3 className="text-lg font-black text-stone-900">
-              Tem Mã QR: {selectedQrProduct.name}
-            </h3>
-            <p className="text-xs text-stone-500">
-              Mã xác thực: <strong className="font-mono text-[#0f2d22]">{selectedQrProduct.verificationCode}</strong>
-            </p>
-
-            {/* Generated QR Code Image */}
-            <div className="p-4 bg-stone-50 rounded-2xl border border-stone-200 inline-block shadow-inner">
-              <img
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(
-                  typeof window !== 'undefined'
-                    ? `${window.location.origin}/?code=${selectedQrProduct.verificationCode}`
-                    : `https://dntrace.com/?code=${selectedQrProduct.verificationCode}`
-                )}`}
-                alt="QR Code"
-                className="w-48 h-48 mx-auto"
-              />
-            </div>
-
-            <div className="pt-2 flex flex-col gap-2">
-              <a
-                href={`https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=${encodeURIComponent(
-                  typeof window !== 'undefined'
-                    ? `${window.location.origin}/?code=${selectedQrProduct.verificationCode}`
-                    : `https://dntrace.com/?code=${selectedQrProduct.verificationCode}`
-                )}`}
-                download={`QR_${selectedQrProduct.verificationCode}.png`}
-                target="_blank"
-                rel="noreferrer"
-                className="w-full py-3 rounded-xl bg-[#0f2d22] hover:bg-[#194535] text-white text-xs font-bold flex items-center justify-center gap-2 shadow transition"
-              >
-                <Download className="w-4 h-4 text-[#84CC16]" />
-                <span>Tải Ảnh Mã QR Độ Phân Giải Cao (PNG)</span>
-              </a>
-
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/75 backdrop-blur-sm">
+            <div className="relative w-full max-w-md bg-white rounded-3xl p-6 sm:p-8 shadow-2xl border border-stone-200 text-center space-y-4">
               <button
-                onClick={() => {
-                  const url = `${window.location.origin}/?code=${selectedQrProduct.verificationCode}`;
-                  navigator.clipboard.writeText(url);
-                  showToast('Đã sao chép link tra cứu!');
-                }}
-                className="w-full py-2.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold flex items-center justify-center gap-2 transition cursor-pointer"
+                onClick={() => setIsQrModalOpen(false)}
+                className="absolute top-4 right-4 p-2 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-600 transition cursor-pointer"
               >
-                <Copy className="w-4 h-4" />
-                <span>Sao Chép Link Tra Cứu</span>
+                <X className="w-5 h-5" />
               </button>
-            </div>
 
+              <div className="w-12 h-12 rounded-2xl bg-[#84CC16]/20 text-[#0f2d22] flex items-center justify-center mx-auto font-black">
+                <QrCode className="w-7 h-7" />
+              </div>
+
+              <h3 className="text-lg font-black text-stone-900">
+                Tem Mã QR: {selectedQrProduct.name}
+              </h3>
+              <p className="text-xs text-stone-500">
+                Mã xác thực: <strong className="font-mono text-[#0f2d22]">{selectedQrProduct.verificationCode}</strong>
+              </p>
+
+              {/* Đường dẫn tra cứu khi quét QR */}
+              <div className="p-3 bg-stone-50 rounded-2xl border border-stone-200 text-left space-y-1">
+                <span className="text-[10px] font-bold text-stone-400 uppercase block tracking-wider">
+                  Đường dẫn quét mã QR:
+                </span>
+                <a
+                  href={productUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-mono text-xs font-bold text-[#0f2d22] hover:underline break-all block"
+                >
+                  {productUrl}
+                </a>
+              </div>
+
+              {/* Generated QR Code Image */}
+              <div className="p-4 bg-stone-50 rounded-2xl border border-stone-200 inline-block shadow-inner">
+                <img
+                  src={qrImage240}
+                  alt={`QR Code - ${selectedQrProduct.name}`}
+                  className="w-48 h-48 mx-auto"
+                />
+              </div>
+
+              <div className="pt-2 flex flex-col gap-2">
+                <a
+                  href={qrImage600}
+                  download={`QR_${productSlug}.png`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="w-full py-3 rounded-xl bg-[#0f2d22] hover:bg-[#194535] text-white text-xs font-bold flex items-center justify-center gap-2 shadow transition"
+                >
+                  <Download className="w-4 h-4 text-[#84CC16]" />
+                  <span>Tải Ảnh Mã QR Độ Phân Giải Cao (PNG)</span>
+                </a>
+
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(productUrl);
+                    showToast('Đã sao chép link tra cứu: ' + productUrl);
+                  }}
+                  className="w-full py-2.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold flex items-center justify-center gap-2 transition cursor-pointer"
+                >
+                  <Copy className="w-4 h-4" />
+                  <span>Sao Chép Link Tra Cứu</span>
+                </button>
+              </div>
+
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ======================================================== */}
       {/* MODAL 3: VIEW & MANAGE QR REGISTRATION REQUEST */}

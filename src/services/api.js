@@ -2,10 +2,25 @@ import { defaultSeedProducts } from '../data/seedData.js';
 
 const API_BASE = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
 
+export function slugify(text) {
+  if (!text) return '';
+  return text
+    .toString()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[đĐ]/g, 'd')
+    .replace(/[^a-z0-9 -]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-');
+}
+
 // Fallback products in case backend is offline
 let localFallbackProducts = JSON.parse(JSON.stringify(defaultSeedProducts)).map((p, idx) => ({
   ...p,
   _id: `fallback_${idx + 1}`,
+  slug: p.slug || slugify(p.name),
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString()
 }));
@@ -190,14 +205,21 @@ export async function fetchProducts() {
   }
 }
 
-export async function fetchProductById(idOrCode) {
+export async function fetchProductById(idOrCodeOrSlug) {
+  const query = encodeURIComponent(idOrCodeOrSlug);
+  const rawKey = String(idOrCodeOrSlug).toLowerCase().trim();
   try {
-    const res = await fetch(`${API_BASE}/products/${idOrCode}`);
+    const res = await fetch(`${API_BASE}/products/${query}`);
     if (!res.ok) throw new Error('Không tìm thấy sản phẩm');
     const json = await res.json();
     return { data: json.data, source: json.source, isOffline: false };
   } catch (err) {
-    const found = localFallbackProducts.find(p => p._id === idOrCode || p.verificationCode === idOrCode);
+    const found = localFallbackProducts.find(p => 
+      p._id === idOrCodeOrSlug || 
+      p.verificationCode === idOrCodeOrSlug ||
+      (p.slug && p.slug.toLowerCase() === rawKey) ||
+      slugify(p.name) === rawKey
+    );
     if (found) {
       return { data: found, source: 'offline_fallback', isOffline: true };
     }
@@ -206,17 +228,21 @@ export async function fetchProductById(idOrCode) {
 }
 
 export async function createProduct(productData) {
+  const withSlug = {
+    ...productData,
+    slug: slugify(productData.slug || productData.name)
+  };
   let res;
   try {
     res = await fetch(`${API_BASE}/products`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(productData)
+      body: JSON.stringify(withSlug)
     });
   } catch (networkErr) {
     // Only fall back if backend server is completely unreachable / network error
     const newP = {
-      ...productData,
+      ...withSlug,
       _id: `fallback_${Date.now()}`,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
@@ -237,19 +263,29 @@ export async function createProduct(productData) {
 }
 
 export async function updateProduct(id, productData) {
+  const withSlug = {
+    ...productData,
+    slug: slugify(productData.slug || productData.name)
+  };
   let res;
   try {
     res = await fetch(`${API_BASE}/products/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(productData)
+      body: JSON.stringify(withSlug)
     });
   } catch (networkErr) {
-    const idx = localFallbackProducts.findIndex(p => p._id === id || p.verificationCode === id);
+    const rawKey = String(id).toLowerCase().trim();
+    const idx = localFallbackProducts.findIndex(p => 
+      p._id === id || 
+      p.verificationCode === id ||
+      (p.slug && p.slug.toLowerCase() === rawKey) ||
+      slugify(p.name) === rawKey
+    );
     if (idx !== -1) {
       localFallbackProducts[idx] = {
         ...localFallbackProducts[idx],
-        ...productData,
+        ...withSlug,
         updatedAt: new Date().toISOString()
       };
       return { success: true, data: localFallbackProducts[idx], message: 'Đã cập nhật (Bộ nhớ tạm)!' };

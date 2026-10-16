@@ -33,10 +33,11 @@ import {
   ZoomIn,
   X
 } from 'lucide-react';
-import { fetchProducts, fetchProductById } from '../services/api';
+import { fetchProducts, fetchProductById, slugify } from '../services/api';
 
 export default function ProductTraceabilityPage({
   selectedProductId,
+  onProductChange,
   onOpenQrRegister,
   onNavigateToAdmin
 }) {
@@ -50,27 +51,42 @@ export default function ProductTraceabilityPage({
   const [lightboxImg, setLightboxImg] = useState(null);
 
   // Load product data from API
-  const loadProduct = async (idOrCode) => {
+  const loadProduct = async (idOrCodeOrSlug) => {
     setLoading(true);
     try {
       const [prodsRes, currentRes] = await Promise.all([
         fetchProducts(),
-        idOrCode ? fetchProductById(idOrCode) : null
+        idOrCodeOrSlug ? fetchProductById(idOrCodeOrSlug) : null
       ]);
 
       const list = prodsRes.data || [];
       setAllProducts(list);
 
+      let chosen = null;
       if (currentRes && currentRes.data) {
-        setProductData(currentRes.data);
+        chosen = currentRes.data;
       } else if (list.length > 0) {
-        if (idOrCode) {
-          const matched = list.find(p => p._id === idOrCode || p.verificationCode === idOrCode);
-          setProductData(matched || list[0]);
+        if (idOrCodeOrSlug) {
+          const lowerKey = String(idOrCodeOrSlug).toLowerCase().trim();
+          chosen = list.find(p => 
+            p._id === idOrCodeOrSlug || 
+            p.verificationCode === idOrCodeOrSlug ||
+            (p.slug && p.slug.toLowerCase() === lowerKey) ||
+            slugify(p.name) === lowerKey
+          ) || list[0];
         } else {
           // Priority to default product (Kẹo dừa dẻo Ngọc Hải)
-          const defaultProd = list.find(p => p.isDefault) || list[0];
-          setProductData(defaultProd);
+          chosen = list.find(p => p.isDefault) || list[0];
+        }
+      }
+
+      if (chosen) {
+        setProductData(chosen);
+        // Automatically sync current URL with product slug
+        const slug = chosen.slug || slugify(chosen.name);
+        const currentPath = window.location.pathname.replace(/^\/+/, '');
+        if (slug && currentPath !== slug && !window.location.pathname.startsWith('/admin')) {
+          window.history.replaceState({}, '', `/${slug}`);
         }
       }
     } catch (err) {
@@ -85,7 +101,9 @@ export default function ProductTraceabilityPage({
   }, [selectedProductId]);
 
   const handleCopyLink = () => {
-    navigator.clipboard.writeText(window.location.href);
+    const slug = productData?.slug || slugify(productData?.name || '');
+    const shareUrl = slug ? `${window.location.origin}/${slug}` : window.location.href;
+    navigator.clipboard.writeText(shareUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -172,6 +190,11 @@ export default function ProductTraceabilityPage({
                       onClick={() => {
                         setProductData(p);
                         setShowProductDropdown(false);
+                        const slug = p.slug || slugify(p.name);
+                        window.history.pushState({}, '', `/${slug}`);
+                        if (onProductChange) {
+                          onProductChange(p);
+                        }
                       }}
                       className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition cursor-pointer ${
                         p.verificationCode === productData.verificationCode
@@ -425,7 +448,7 @@ export default function ProductTraceabilityPage({
                   NGUYÊN LIỆU ĐẦU VÀO
                 </h4>
                 <p className="text-xs sm:text-sm text-stone-700 leading-relaxed bg-stone-50 p-4 rounded-xl border border-stone-200 whitespace-pre-line">
-                  {productData.rawMaterials || '50% cơm dừa tươi nguyên chất tuyển chọn, đường mía tự nhiên, mạch nha nếp thơm ngọt, hạt mè rang giòn và bánh tráng mè nướng.'}
+                  {productData.rawMaterials}
                 </p>
               </div>
 
@@ -498,7 +521,7 @@ export default function ProductTraceabilityPage({
                   </div>
 
                   {/* Verification Status Pill */}
-                  <div className="mt-4 pt-4 border-t border-stone-100 flex items-center justify-between">
+                  {/* <div className="mt-4 pt-4 border-t border-stone-100 flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
                       <span className="text-xs font-bold text-stone-700">Tem chính hãng dntrace.com</span>
@@ -506,7 +529,7 @@ export default function ProductTraceabilityPage({
                     <span className="text-[11px] font-semibold text-[#84CC16] bg-[#0f2d22] px-2.5 py-1 rounded-lg">
                       Đã kiểm định
                     </span>
-                  </div>
+                  </div> */}
                 </div>
 
                 {/* Manufacturer Card (THÔNG TIN ĐƠN VỊ/ NHÀ SẢN XUẤT) */}
@@ -798,10 +821,10 @@ export default function ProductTraceabilityPage({
 
                   <div className="p-6 rounded-2xl bg-[#F8F7F3] border border-stone-200/80 space-y-4">
                     <p className="text-xs sm:text-sm text-stone-800 leading-relaxed whitespace-pre-line font-medium">
-                      {productData.rawMaterials || `Cơm dừa tươi 50% tuyển chọn từ các vùng dừa sạch, đường mía nguyên chất, mạch nha nếp thơm ngọt, hạt mè mẩy rang giòn và bánh tráng mè nướng thủ công.`}
+                      {productData.rawMaterials}
                     </p>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+                    {/* <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
                       <div className="p-3.5 rounded-xl bg-white border border-stone-200 text-xs">
                         <span className="font-bold text-[#0f2d22] block mb-1">🥥 Cơm dừa tươi 50%</span>
                         <p className="text-stone-600 text-[11px]">Dừa bánh tẻ độ dẻo và béo thơm tự nhiên</p>
@@ -814,7 +837,7 @@ export default function ProductTraceabilityPage({
                         <span className="font-bold text-[#0f2d22] block mb-1">🥢 Mè rang &amp; Bánh tráng nướng</span>
                         <p className="text-stone-600 text-[11px]">Nướng giòn truyền thống tạo kết cấu giòn dẻo</p>
                       </div>
-                    </div>
+                    </div> */}
                   </div>
                 </div>
               )}
@@ -883,7 +906,7 @@ export default function ProductTraceabilityPage({
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 gap-4">
                     {galleryImages.map((img, idx) => (
                       <div
                         key={idx}
@@ -908,7 +931,7 @@ export default function ProductTraceabilityPage({
             </div>
 
             {/* Registration Callout Banner */}
-            <div className="p-6 sm:p-8 rounded-3xl bg-gradient-to-r from-[#0f2d22] to-[#194535] text-white flex flex-col md:flex-row items-start md:items-center justify-between gap-6 shadow-xl">
+            {/* <div className="p-6 sm:p-8 rounded-3xl bg-gradient-to-r from-[#0f2d22] to-[#194535] text-white flex flex-col md:flex-row items-start md:items-center justify-between gap-6 shadow-xl">
               <div className="flex items-start sm:items-center gap-4">
                 <div className="w-14 h-14 rounded-2xl bg-[#84CC16] text-[#0f2d22] flex items-center justify-center shrink-0 font-black shadow-md">
                   <QrCode className="w-8 h-8 text-[#0f2d22]" />
@@ -935,7 +958,7 @@ export default function ProductTraceabilityPage({
                   <span>Đăng Ký Cấp Mã QR Ngay</span>
                 </button>
               )}
-            </div>
+            </div> */}
 
           </div>
         )}
