@@ -25,7 +25,17 @@ import {
   Server,
   LogOut,
   Cloud,
-  CloudUpload
+  CloudUpload,
+  Download,
+  FileText,
+  Clock,
+  Filter,
+  ArrowLeft,
+  Mail,
+  Building2,
+  Calendar,
+  Star,
+  ZoomIn
 } from 'lucide-react';
 import {
   fetchProducts,
@@ -34,61 +44,77 @@ import {
   updateProduct,
   deleteProduct,
   seedProducts,
-  uploadImageToCloudinary
+  uploadImageToCloudinary,
+  uploadMultipleImagesToCloudinary,
+  fetchQrRequests,
+  updateQrRequestStatus,
+  deleteQrRequest
 } from '../services/api';
+import DNTraceLogo from './DNTraceLogo';
 
 export default function AdminProductManager({
   onViewProduct,
   onBackToTraceability,
   onLogout
 }) {
+  // Main view state
+  const [adminTab, setAdminTab] = useState('products'); // 'products' or 'qr_requests'
   const [products, setProducts] = useState([]);
+  const [qrRequests, setQrRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [statusInfo, setStatusInfo] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [requestFilter, setRequestFilter] = useState('all');
   const [copiedCode, setCopiedCode] = useState(null);
 
-  // Modal States
+  // Modals
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [isMongoGuideOpen, setIsMongoGuideOpen] = useState(false);
-  const [isCloudinaryGuideOpen, setIsCloudinaryGuideOpen] = useState(false);
+  const [isQrModalOpen, setIsQrModalOpen] = useState(false);
+  const [selectedQrProduct, setSelectedQrProduct] = useState(null);
+  const [viewingRequest, setViewingRequest] = useState(null);
   const [editingProduct, setEditingProduct] = useState(null);
   const [deletingProduct, setDeletingProduct] = useState(null);
-  const [activeTab, setActiveTab] = useState('general');
+  const [modalTab, setModalTab] = useState('general'); // 'general', 'specs', 'producer', 'content', 'images'
   const [saving, setSaving] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadProgressText, setUploadProgressText] = useState('');
+  const [dragActive, setDragActive] = useState(false);
+  const [manualGalleryUrl, setManualGalleryUrl] = useState('');
+  const [previewLightboxImg, setPreviewLightboxImg] = useState(null);
   const [toastMessage, setToastMessage] = useState(null);
 
   // Form State
   const initialFormState = {
     name: '',
-    system: 'CỔNG TRUY XUẤT NGUỒN GỐC VCHECK (vcheck.com.vn)',
-    provider: 'Công ty TNHH MTV Vạn Phúc Hoa',
+    system: 'CỔNG TRUY XUẤT NGUỒN GỐC DNTRACE (dntrace.com)',
+    provider: 'dntrace.com',
     status: 'ĐÃ XÁC THỰC THÀNH CÔNG',
     verificationCode: '',
-    image: '/assets/ngu_coc_huongfarm.jpg',
-    vcheckBanner: '/assets/vcheck_banner.jpg',
+    image: '/assets/keo_dua_ngoc_hai_spec.png',
+    gallery: [],
     ingredients: '',
-    standards: [
-      { label: 'Số tự công bố sản phẩm (CBSP)', value: '' },
-      { label: 'Số bản cam kết ATTP', value: '' }
-    ],
-    netWeight: '500g',
-    expiry: '12 tháng kể từ ngày sản xuất',
-    manufactureDate: 'Xem chi tiết trên bao bì sản phẩm',
-    usageGuide: '',
-    storageGuide: '',
+    tcbsp: '',
+    standardCode: '',
+    manufactureDate: 'Xem trên bao bì',
+    expiry: 'đang cập nhật',
+    netWeight: 'đang cập nhật',
+    usageGuide: 'xem chi tiết trên bao bì',
+    storageGuide: 'Bảo quản ở nơi khô ráo thoáng mát tránh ánh nắng trực tiếp',
+    warning: '',
+    story: '',
+    rawMaterials: '',
     manufacturer: {
       name: '',
       country: 'Việt Nam',
+      attpCode: '',
       businessId: '',
       address: '',
       phone: '',
       website: ''
     },
     mapEmbed: '',
-    benefits: ['100% nguyên chất, không chất bảo quản nhân tạo']
+    isDefault: false
   };
 
   const [formData, setFormData] = useState(initialFormState);
@@ -98,15 +124,18 @@ export default function AdminProductManager({
     setTimeout(() => setToastMessage(null), 3500);
   };
 
+  // Load all data
   const loadData = async () => {
     setLoading(true);
     try {
-      const [prodRes, statRes] = await Promise.all([
+      const [prodRes, statRes, qrRes] = await Promise.all([
         fetchProducts(),
-        fetchApiStatus()
+        fetchApiStatus(),
+        fetchQrRequests()
       ]);
       setProducts(prodRes.data || []);
       setStatusInfo(statRes);
+      setQrRequests(qrRes.data || []);
     } catch (err) {
       console.error('Lỗi tải dữ liệu:', err);
     } finally {
@@ -118,51 +147,82 @@ export default function AdminProductManager({
     loadData();
   }, []);
 
+  // Open Add Product modal
   const handleOpenAddModal = () => {
-    const randomCode = 'VCHECK-' + Math.floor(100000 + Math.random() * 900000);
+    const randomCode = 'DNTRACE-' + Math.floor(100000 + Math.random() * 900000);
     setFormData({
       ...initialFormState,
       verificationCode: randomCode
     });
     setEditingProduct(null);
-    setActiveTab('general');
+    setModalTab('general');
     setIsEditModalOpen(true);
   };
 
+  // Open Edit Product modal
   const handleOpenEditModal = (product) => {
     setEditingProduct(product);
     setFormData({
       name: product.name || '',
-      system: product.system || 'CỔNG TRUY XUẤT NGUỒN GỐC VCHECK (vcheck.com.vn)',
-      provider: product.provider || 'Công ty TNHH MTV Vạn Phúc Hoa',
+      system: product.system || 'CỔNG TRUY XUẤT NGUỒN GỐC DNTRACE (dntrace.com)',
+      provider: product.provider || 'dntrace.com',
       status: product.status || 'ĐÃ XÁC THỰC THÀNH CÔNG',
       verificationCode: product.verificationCode || '',
-      image: product.image || '/assets/ngu_coc_huongfarm.jpg',
-      vcheckBanner: product.vcheckBanner || '/assets/vcheck_banner.jpg',
+      image: product.image || '/assets/keo_dua_ngoc_hai_spec.png',
+      gallery: product.gallery || [],
       ingredients: product.ingredients || '',
-      standards: product.standards && product.standards.length > 0
-        ? JSON.parse(JSON.stringify(product.standards))
-        : [{ label: 'Số tự công bố sản phẩm', value: '' }],
-      netWeight: product.netWeight || '500g',
-      expiry: product.expiry || '12 tháng kể từ ngày sản xuất',
-      manufactureDate: product.manufactureDate || 'Xem chi tiết trên bao bì sản phẩm',
-      usageGuide: product.usageGuide || '',
-      storageGuide: product.storageGuide || '',
+      tcbsp: product.tcbsp || '',
+      standardCode: product.standardCode || '',
+      manufactureDate: product.manufactureDate || 'Xem trên bao bì',
+      expiry: product.expiry || 'đang cập nhật',
+      netWeight: product.netWeight || 'đang cập nhật',
+      usageGuide: product.usageGuide || 'xem chi tiết trên bao bì',
+      storageGuide: product.storageGuide || 'Bảo quản ở nơi khô ráo thoáng mát tránh ánh nắng trực tiếp',
+      warning: product.warning || '',
+      story: product.story || '',
+      rawMaterials: product.rawMaterials || '',
       manufacturer: {
         name: product.manufacturer?.name || '',
         country: product.manufacturer?.country || 'Việt Nam',
+        attpCode: product.manufacturer?.attpCode || '',
         businessId: product.manufacturer?.businessId || '',
         address: product.manufacturer?.address || '',
         phone: product.manufacturer?.phone || '',
         website: product.manufacturer?.website || ''
       },
       mapEmbed: product.mapEmbed || '',
-      benefits: product.benefits || []
+      isDefault: Boolean(product.isDefault)
     });
-    setActiveTab('general');
+    setModalTab('general');
     setIsEditModalOpen(true);
   };
 
+  // Quick Create Product from a QR Request
+  const handleConvertRequestToProduct = (req) => {
+    const randomCode = 'DNTRACE-' + Math.floor(100000 + Math.random() * 900000);
+    setFormData({
+      ...initialFormState,
+      name: req.productName || '',
+      verificationCode: randomCode,
+      manufacturer: {
+        name: req.businessName || '',
+        country: 'Việt Nam',
+        attpCode: '',
+        businessId: '',
+        address: req.address || '',
+        phone: req.phone || '',
+        website: ''
+      },
+      story: req.note ? `Ghi chú từ đơn đăng ký: ${req.note}` : ''
+    });
+    setEditingProduct(null);
+    setModalTab('general');
+    setViewingRequest(null);
+    setAdminTab('products');
+    setIsEditModalOpen(true);
+  };
+
+  // Save product
   const handleSaveProduct = async (e) => {
     e.preventDefault();
     if (!formData.name.trim()) {
@@ -170,596 +230,926 @@ export default function AdminProductManager({
       return;
     }
     if (!formData.verificationCode.trim()) {
-      showToast('⚠️ Vui lòng nhập mã xác thực VCheck!');
+      showToast('⚠️ Vui lòng nhập mã xác thực dntrace!');
       return;
     }
 
     setSaving(true);
     try {
-      const cleanedPayload = {
-        ...formData,
-        standards: (formData.standards || []).filter(s => s && (s.label?.trim() || s.value?.trim())),
-        benefits: (formData.benefits || []).filter(b => typeof b === 'string' && b.trim())
-      };
-
       if (editingProduct) {
         const id = editingProduct._id || editingProduct.verificationCode;
-        const res = await updateProduct(id, cleanedPayload);
+        const res = await updateProduct(id, formData);
         showToast(res.message || '✅ Đã cập nhật sản phẩm thành công!');
       } else {
-        const res = await createProduct(cleanedPayload);
-        showToast(res.message || '✅ Đã thêm sản phẩm mới thành công!');
+        const res = await createProduct(formData);
+        showToast(res.message || '✅ Đã tạo mới sản phẩm thành công!');
       }
       setIsEditModalOpen(false);
       await loadData();
     } catch (err) {
-      showToast('❌ Lỗi: ' + (err.message || 'Không thể lưu sản phẩm'));
+      showToast('❌ Lỗi: ' + (err.message || 'Không thể lưu'));
     } finally {
       setSaving(false);
     }
   };
 
-  const handleConfirmDelete = async () => {
+  // Delete product
+  const handleDeleteProduct = async () => {
     if (!deletingProduct) return;
-    setSaving(true);
     try {
       const id = deletingProduct._id || deletingProduct.verificationCode;
-      await deleteProduct(id);
-      showToast('🗑️ Đã xoá sản phẩm thành công!');
+      const res = await deleteProduct(id);
+      showToast(res.message || '🗑️ Đã xoá sản phẩm thành công!');
       setIsDeleteModalOpen(false);
       setDeletingProduct(null);
       await loadData();
     } catch (err) {
-      showToast('❌ Lỗi xoá sản phẩm: ' + err.message);
-    } finally {
-      setSaving(false);
+      showToast('❌ Lỗi: ' + err.message);
     }
   };
 
+  // Re-seed data
   const handleSeedData = async () => {
-    if (!window.confirm('Bạn có muốn nạp lại dữ liệu mẫu vào cơ sở dữ liệu không?')) return;
+    if (!window.confirm('Khởi tạo lại dữ liệu mẫu sẽ làm mới danh sách sản phẩm theo chuẩn (Kẹo dừa dẻo Ngọc Hải...). Tiếp tục?')) {
+      return;
+    }
     setLoading(true);
     try {
       const res = await seedProducts();
-      showToast(res.message || '🌱 Đã nạp lại dữ liệu mẫu thành công!');
+      showToast(res.message || '✅ Đã nạp lại dữ liệu mẫu!');
       await loadData();
     } catch (err) {
-      showToast('❌ Lỗi khi nạp dữ liệu: ' + err.message);
+      showToast('❌ Lỗi nạp dữ liệu: ' + err.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCopy = (code) => {
-    navigator.clipboard.writeText(code);
-    setCopiedCode(code);
-    setTimeout(() => setCopiedCode(null), 2000);
-  };
-
-  // Image Upload to Cloudinary
-  const handleImageUpload = (e) => {
-    const file = e.target.files[0];
+  // Handle Primary Image Upload (Single to Cloudinary)
+  const handlePrimaryImageUpload = async (e) => {
+    const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 10 * 1024 * 1024) {
-      showToast('⚠️ Vui lòng chọn ảnh dung lượng dưới 10MB!');
+    setUploadingImage(true);
+    setUploadProgressText('☁️ Đang tải ảnh chính lên Cloudinary...');
+    try {
+      const res = await uploadImageToCloudinary(file);
+      setFormData(prev => ({ ...prev, image: res.url }));
+      showToast('📸 Đã tải ảnh chính lên Cloudinary thành công!');
+    } catch (err) {
+      showToast('❌ Lỗi tải ảnh: ' + err.message);
+    } finally {
+      setUploadingImage(false);
+      setUploadProgressText('');
+      e.target.value = '';
+    }
+  };
+
+  // Handle Multiple Gallery Images Upload (Batch to Cloudinary)
+  const handleMultipleGalleryUpload = async (e) => {
+    let files = [];
+    if (e.dataTransfer && e.dataTransfer.files) {
+      files = Array.from(e.dataTransfer.files);
+    } else if (e.target && e.target.files) {
+      files = Array.from(e.target.files);
+    }
+
+    if (!files || files.length === 0) return;
+
+    // Filter only image files
+    const imageFiles = files.filter(f => f.type.startsWith('image/'));
+    if (imageFiles.length === 0) {
+      showToast('⚠️ Vui lòng chỉ chọn các tệp hình ảnh (JPG, PNG, WEBP...)');
       return;
     }
 
     setUploadingImage(true);
-    showToast('☁️ Đang xử lý và tải ảnh lên Cloudinary...');
-
-    const reader = new FileReader();
-    reader.onloadend = async () => {
-      try {
-        const res = await uploadImageToCloudinary(reader.result);
-        if (res && res.url) {
-          setFormData(prev => ({ ...prev, image: res.url }));
-          if (res.storage === 'cloudinary') {
-            showToast('☁️ Đã tải ảnh lên Cloudinary thành công!');
-          } else {
-            showToast('✅ Đã nhận ảnh. Gắn thông tin Cloudinary vào .env để lưu vĩnh viễn trên mây!');
-          }
-        }
-      } catch (err) {
-        showToast('❌ Lỗi upload ảnh: ' + err.message);
-      } finally {
-        setUploadingImage(false);
+    setUploadProgressText(`☁️ Đang upload ${imageFiles.length} ảnh lên Cloudinary...`);
+    try {
+      const res = await uploadMultipleImagesToCloudinary(imageFiles);
+      if (res.urls && res.urls.length > 0) {
+        setFormData(prev => {
+          const currentGallery = prev.gallery || [];
+          const newGallery = [...currentGallery, ...res.urls];
+          return {
+            ...prev,
+            gallery: newGallery,
+            // If primary image is empty or default placeholder, set first uploaded as primary
+            image: (!prev.image || prev.image.includes('spec.png')) ? res.urls[0] : prev.image
+          };
+        });
+        showToast(`✅ Đã tải thành công ${res.urls.length} ảnh lên Cloudinary!`);
+      } else {
+        showToast('⚠️ Không nhận được link ảnh từ Cloudinary');
       }
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      showToast('❌ Lỗi tải nhiều ảnh lên Cloudinary: ' + err.message);
+    } finally {
+      setUploadingImage(false);
+      setUploadProgressText('');
+      if (e.target) e.target.value = '';
+    }
   };
 
-  // Standards handling
-  const handleAddStandard = () => {
-    setFormData({
-      ...formData,
-      standards: [...formData.standards, { label: '', value: '' }]
-    });
+  // Set selected gallery image as primary product image
+  const handleSetAsPrimaryImage = (url) => {
+    setFormData(prev => ({ ...prev, image: url }));
+    showToast('⭐ Đã đặt ảnh này làm ảnh đại diện chính!');
   };
 
-  const handleStandardChange = (index, field, val) => {
-    const updated = [...formData.standards];
-    updated[index][field] = val;
-    setFormData({ ...formData, standards: updated });
+  // Add manual image URL to gallery
+  const handleAddManualGalleryUrl = () => {
+    if (!manualGalleryUrl.trim()) return;
+    setFormData(prev => ({
+      ...prev,
+      gallery: [...(prev.gallery || []), manualGalleryUrl.trim()]
+    }));
+    setManualGalleryUrl('');
+    showToast('Đã thêm ảnh vào thư viện!');
   };
 
-  const handleRemoveStandard = (index) => {
-    const updated = formData.standards.filter((_, i) => i !== index);
-    setFormData({ ...formData, standards: updated });
+  // Update QR Request Status
+  const handleUpdateStatus = async (id, newStatus) => {
+    try {
+      const res = await updateQrRequestStatus(id, newStatus);
+      showToast(res.message || '✅ Đã cập nhật trạng thái đơn!');
+      const updatedList = qrRequests.map(r => r._id === id ? { ...r, status: newStatus } : r);
+      setQrRequests(updatedList);
+      if (viewingRequest && viewingRequest._id === id) {
+        setViewingRequest(prev => ({ ...prev, status: newStatus }));
+      }
+    } catch (err) {
+      showToast('❌ Lỗi cập nhật: ' + err.message);
+    }
+  };
+
+  // Delete QR Request
+  const handleDeleteRequest = async (id) => {
+    if (!window.confirm('Bạn có chắc chắn muốn xoá đơn đăng ký cấp mã QR này?')) return;
+    try {
+      const res = await deleteQrRequest(id);
+      showToast(res.message || '🗑️ Đã xoá đơn thành công!');
+      setQrRequests(prev => prev.filter(r => r._id !== id));
+      if (viewingRequest && viewingRequest._id === id) setViewingRequest(null);
+    } catch (err) {
+      showToast('❌ Lỗi: ' + err.message);
+    }
+  };
+
+  // Copy code
+  const handleCopyCode = (code) => {
+    navigator.clipboard.writeText(code);
+    setCopiedCode(code);
+    setTimeout(() => setCopiedCode(null), 2000);
   };
 
   // Filter products
   const filteredProducts = products.filter(p => {
     const q = searchQuery.toLowerCase();
     return (
-      (p.name && p.name.toLowerCase().includes(q)) ||
-      (p.verificationCode && p.verificationCode.toLowerCase().includes(q)) ||
-      (p.manufacturer?.name && p.manufacturer.name.toLowerCase().includes(q))
+      p.name?.toLowerCase().includes(q) ||
+      p.verificationCode?.toLowerCase().includes(q) ||
+      p.manufacturer?.name?.toLowerCase().includes(q) ||
+      p.tcbsp?.toLowerCase().includes(q)
     );
   });
 
+  // Filter requests
+  const filteredRequests = qrRequests.filter(r => {
+    const matchesFilter = requestFilter === 'all' || r.status === requestFilter;
+    const q = searchQuery.toLowerCase();
+    const matchesSearch = !q || (
+      r.name?.toLowerCase().includes(q) ||
+      r.businessName?.toLowerCase().includes(q) ||
+      r.productName?.toLowerCase().includes(q) ||
+      r.phone?.toLowerCase().includes(q)
+    );
+    return matchesFilter && matchesSearch;
+  });
+
+  const pendingRequestsCount = qrRequests.filter(r => r.status === 'pending' || !r.status).length;
+
   return (
-    <div className="bg-[#F8F7F3] min-h-screen py-8">
-      {/* Toast Notification */}
+    <div className="bg-[#F8F7F3] min-h-screen pb-16 text-[#19241F]">
+      
+      {/* Toast Alert */}
       {toastMessage && (
-        <div className="fixed top-6 right-6 z-50 bg-[#174C3C] text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border border-[#DFCA9B]/30 animate-bounce">
-          <Sparkles className="w-5 h-5 text-[#DFCA9B]" />
-          <span className="text-sm font-semibold">{toastMessage}</span>
+        <div className="fixed bottom-6 right-6 z-50 bg-[#0f2d22] text-white px-5 py-3 rounded-2xl shadow-2xl border border-[#84CC16]/30 flex items-center gap-3 animate-bounce">
+          <Info className="w-5 h-5 text-[#84CC16]" />
+          <span className="text-xs sm:text-sm font-semibold">{toastMessage}</span>
         </div>
       )}
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
-
-        {/* Top Header & Navigation */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-stone-200">
-          <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#174C3C]/10 text-[#174C3C] text-xs font-bold uppercase tracking-wider mb-2">
-              <Server className="w-3.5 h-3.5" />
-              <span>Hệ Thống Quản Trị /admin &bull; Tài khoản: admin</span>
+      {/* Top Admin Header Bar */}
+      <div className="bg-[#0f2d22] text-white border-b border-[#1C4638] sticky top-0 z-30 shadow-md">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            
+            {/* Logo & Portal Title */}
+            <div className="flex items-center gap-3">
+              <DNTraceLogo className="h-8" isWhite={true} pillBackground={true} />
+              <div className="hidden sm:block border-l border-white/20 pl-3">
+                <span className="text-xs font-black uppercase tracking-wider text-[#84CC16] block leading-tight">
+                  Khu Vực Quản Trị Hệ Thống
+                </span>
+                <span className="text-[10px] text-stone-300 block">
+                  Quản lý sản phẩm &amp; Cấp mã QR truy xuất
+                </span>
+              </div>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#19241F] tracking-tight">
-              Quản Lý &amp; Thêm Sản Phẩm Cổng VCheck
-            </h1>
-            <p className="text-stone-500 text-xs sm:text-sm mt-1">
-              Thêm, sửa, xoá thông tin sản phẩm và lưu trữ hình ảnh trực tiếp lên Cloudinary &amp; MongoDB.
-            </p>
+
+            {/* Top Right Actions */}
+            <div className="flex items-center gap-2 sm:gap-3">
+              {/* DB Status Badge */}
+              <div
+                title={statusInfo?.dbConnected ? 'Đã kết nối cơ sở dữ liệu MongoDB' : 'Đang chạy bộ nhớ In-Memory tạm thời'}
+                className="hidden md:flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 text-xs border border-white/10"
+              >
+                <span className={`w-2 h-2 rounded-full ${statusInfo?.dbConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+                <span className="text-[11px] font-medium text-stone-200">
+                  {statusInfo?.dbConnected ? 'MongoDB Đã Kết Nối' : 'In-Memory Cache'}
+                </span>
+              </div>
+
+              {/* Back to Traceability */}
+              <button
+                onClick={onBackToTraceability}
+                className="px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Về Trang Truy Xuất</span>
+              </button>
+
+              {/* Logout */}
+              {onLogout && (
+                <button
+                  onClick={onLogout}
+                  className="p-1.5 sm:px-3 sm:py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/40 text-rose-200 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                  title="Đăng xuất quản trị"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Đăng xuất</span>
+                </button>
+              )}
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      {/* Main Admin Content Container */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8 space-y-6">
+
+        {/* Top Tab Switcher: Products vs QR Requests */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-4 sm:p-5 rounded-3xl border border-stone-200 shadow-sm">
+          
+          <div className="flex items-center gap-2 bg-stone-100 p-1.5 rounded-2xl w-full sm:w-auto">
+            <button
+              onClick={() => setAdminTab('products')}
+              className={`flex-1 sm:flex-none px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-center gap-2 cursor-pointer ${
+                adminTab === 'products' ? 'bg-[#0f2d22] text-white shadow-sm' : 'text-stone-600 hover:text-stone-900'
+              }`}
+            >
+              <Layers className="w-4 h-4" />
+              <span>Quản Lý Sản Phẩm ({products.length})</span>
+            </button>
+
+            <button
+              onClick={() => setAdminTab('qr_requests')}
+              className={`flex-1 sm:flex-none px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-center gap-2 cursor-pointer ${
+                adminTab === 'qr_requests' ? 'bg-[#0f2d22] text-white shadow-sm' : 'text-stone-600 hover:text-stone-900'
+              }`}
+            >
+              <QrCode className="w-4 h-4" />
+              <span>Đơn Đăng Ký Cấp Mã QR ({qrRequests.length})</span>
+              {pendingRequestsCount > 0 && (
+                <span className="px-2 py-0.5 rounded-full bg-[#84CC16] text-[#0f2d22] text-[10px] font-black">
+                  {pendingRequestsCount} mới
+                </span>
+              )}
+            </button>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              onClick={onBackToTraceability}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white border border-stone-200 text-stone-700 hover:text-[#174C3C] text-xs font-bold shadow-sm transition hover:shadow cursor-pointer"
-            >
-              <Eye className="w-4 h-4 text-[#174C3C]" />
-              <span>Xem Trang Truy Xuất</span>
-            </button>
-
-            <button
-              onClick={handleOpenAddModal}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#174C3C] hover:bg-[#205F4D] text-white text-xs font-bold shadow-md transition hover:-translate-y-0.5 cursor-pointer"
-            >
-              <Plus className="w-4 h-4 text-[#DFCA9B]" />
-              <span>+ Thêm Sản Phẩm Mới</span>
-            </button>
-
-            {onLogout && (
+          {/* Quick Action Buttons */}
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+            {adminTab === 'products' ? (
+              <>
+                <button
+                  onClick={handleSeedData}
+                  className="px-3.5 py-2.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                  title="Tải lại dữ liệu mẫu Kẹo dừa dẻo Ngọc Hải"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span className="hidden md:inline">Khởi Tạo Dữ Liệu Mẫu</span>
+                </button>
+                <button
+                  onClick={handleOpenAddModal}
+                  className="px-4 py-2.5 rounded-xl bg-[#84CC16] hover:bg-[#74B843] text-[#0f2d22] text-xs font-black shadow-md transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Thêm Sản Phẩm Mới</span>
+                </button>
+              </>
+            ) : (
               <button
-                onClick={onLogout}
-                title="Đăng xuất tài khoản admin"
-                className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition cursor-pointer"
+                onClick={loadData}
+                className="px-3.5 py-2.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
               >
-                <LogOut className="w-4 h-4" />
-                <span>Đăng xuất</span>
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Làm Mới Danh Sách</span>
               </button>
             )}
           </div>
+
         </div>
 
-
-
-        {/* Action & Filter Bar */}
-        <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="relative w-full sm:w-80">
-            <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="Tìm theo tên, mã VCheck, cơ sở..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 text-xs rounded-xl border border-stone-200 focus:outline-none focus:border-[#174C3C] focus:ring-1 focus:ring-[#174C3C] bg-stone-50"
-            />
-          </div>
-
-          <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
-            <span className="text-xs text-stone-500 font-medium">
-              Tổng cộng: <strong>{filteredProducts.length}</strong> sản phẩm
-            </span>
-            <button
-              onClick={handleSeedData}
-              className="px-3 py-1.5 rounded-lg text-xs font-bold text-[#174C3C] bg-[#174C3C]/10 hover:bg-[#174C3C]/20 transition cursor-pointer"
-            >
-              🌱 Nạp Mẫu
-            </button>
-            <button
-              onClick={loadData}
-              title="Làm mới dữ liệu"
-              className="p-1.5 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-600 transition cursor-pointer"
-            >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            </button>
-          </div>
-        </div>
-
-        {/* Product List / Table */}
-        {loading ? (
-          <div className="bg-white rounded-3xl p-12 text-center border border-stone-200 space-y-3">
-            <RefreshCw className="w-8 h-8 text-[#174C3C] animate-spin mx-auto" />
-            <p className="text-sm font-semibold text-stone-600">Đang đồng bộ dữ liệu với MongoDB...</p>
-          </div>
-        ) : filteredProducts.length === 0 ? (
-          <div className="bg-white rounded-3xl p-12 text-center border border-stone-200 space-y-4">
-            <div className="w-16 h-16 rounded-2xl bg-stone-100 flex items-center justify-center mx-auto text-stone-400">
-              <QrCode className="w-8 h-8" />
+        {/* ======================================================== */}
+        {/* TAB 1: PRODUCT MANAGEMENT */}
+        {/* ======================================================== */}
+        {adminTab === 'products' && (
+          <div className="space-y-6">
+            
+            {/* Search Bar */}
+            <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-sm flex items-center gap-3">
+              <Search className="w-5 h-5 text-stone-400 shrink-0 ml-1" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Tìm kiếm sản phẩm theo tên, mã định danh dntrace, tên cơ sở, số TCBSP..."
+                className="w-full text-xs sm:text-sm bg-transparent outline-none text-stone-900 placeholder:text-stone-400"
+              />
+              {searchQuery && (
+                <button onClick={() => setSearchQuery('')} className="text-xs text-stone-400 hover:text-stone-600">
+                  Xoá
+                </button>
+              )}
             </div>
-            <div>
-              <h3 className="text-base font-bold text-stone-800">Chưa có sản phẩm nào</h3>
-              <p className="text-xs text-stone-500 mt-1 max-w-md mx-auto">
-                Hiện danh sách đang trống. Bạn có thể bấm nút "Thêm sản phẩm mới" để bắt đầu.
-              </p>
-            </div>
-            <div className="flex items-center justify-center gap-3 pt-2">
-              <button
-                onClick={handleOpenAddModal}
-                className="px-4 py-2 rounded-xl bg-[#174C3C] text-white text-xs font-bold hover:bg-[#205F4D] transition cursor-pointer"
-              >
-                + Thêm sản phẩm đầu tiên
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-stone-50 text-stone-500 uppercase tracking-wider font-semibold border-b border-stone-200">
-                  <tr>
-                    <th className="py-3.5 px-4 w-16">Ảnh</th>
-                    <th className="py-3.5 px-4">Tên Sản Phẩm</th>
-                    <th className="py-3.5 px-4">Mã VCheck / Barcode</th>
-                    <th className="py-3.5 px-4">Đơn Vị Sản Xuất</th>
-                    <th className="py-3.5 px-4">Trọng Lượng / HSD</th>
-                    <th className="py-3.5 px-4 text-center">Trạng Thái</th>
-                    <th className="py-3.5 px-4 text-right">Thao Tác</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-stone-100">
-                  {filteredProducts.map((p) => (
-                    <tr key={p._id || p.verificationCode} className="hover:bg-stone-50/70 transition">
-                      <td className="py-3 px-4">
-                        <div className="w-12 h-12 rounded-xl bg-stone-100 overflow-hidden border border-stone-200 flex items-center justify-center shrink-0 relative group">
-                          {p.image ? (
-                            <img src={p.image} alt={p.name} className="w-full h-full object-cover" />
-                          ) : (
-                            <ImageIcon className="w-5 h-5 text-stone-400" />
-                          )}
-                          {p.image && p.image.includes('cloudinary') && (
-                            <span
-                              title="Lưu trên Cloudinary"
-                              className="absolute bottom-0.5 right-0.5 w-3.5 h-3.5 bg-sky-500 text-white rounded-full flex items-center justify-center shadow"
-                            >
-                              <Cloud className="w-2.5 h-2.5" />
-                            </span>
-                          )}
-                        </div>
-                      </td>
 
-                      <td className="py-3 px-4">
-                        <div className="font-bold text-stone-900 text-sm max-w-xs">{p.name}</div>
-                        <div className="text-[11px] text-stone-500 mt-0.5 line-clamp-1">{p.ingredients || 'Chưa cập nhật thành phần'}</div>
-                      </td>
-
-                      <td className="py-3 px-4">
-                        <div className="inline-flex items-center gap-1.5 bg-stone-100 px-2 py-1 rounded-lg border border-stone-200 font-mono text-[11px] font-bold text-stone-800">
-                          <span>{p.verificationCode}</span>
-                          <button
-                            onClick={() => handleCopy(p.verificationCode)}
-                            title="Sao chép mã"
-                            className="text-stone-400 hover:text-stone-700 cursor-pointer"
-                          >
-                            {copiedCode === p.verificationCode ? (
-                              <Check className="w-3.5 h-3.5 text-emerald-600" />
-                            ) : (
-                              <Copy className="w-3.5 h-3.5" />
-                            )}
-                          </button>
-                        </div>
-                      </td>
-
-                      <td className="py-3 px-4">
-                        <div className="font-semibold text-stone-800">{p.manufacturer?.name || 'Chưa có tên'}</div>
-                        <div className="text-[11px] text-stone-500 flex items-center gap-1 mt-0.5">
-                          <Phone className="w-3 h-3 text-[#174C3C]" />
-                          <span>{p.manufacturer?.phone || 'Chưa có SĐT'}</span>
-                        </div>
-                      </td>
-
-                      <td className="py-3 px-4">
-                        <div className="font-medium text-stone-800">{p.netWeight || '-'}</div>
-                        <div className="text-[11px] text-stone-500">{p.expiry || '-'}</div>
-                      </td>
-
-                      <td className="py-3 px-4 text-center">
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
-                          <ShieldCheck className="w-3 h-3" />
-                          <span>{p.status || 'ĐÃ XÁC THỰC'}</span>
-                        </span>
-                      </td>
-
-                      <td className="py-3 px-4 text-right">
-                        <div className="inline-flex items-center gap-1.5">
-                          <button
-                            onClick={() => onViewProduct(p._id || p.verificationCode)}
-                            title="Xem trang truy xuất của sản phẩm này"
-                            className="p-1.5 rounded-lg bg-stone-100 text-[#174C3C] hover:bg-[#174C3C] hover:text-white transition cursor-pointer"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleOpenEditModal(p)}
-                            title="Chỉnh sửa sản phẩm"
-                            className="p-1.5 rounded-lg bg-stone-100 text-blue-700 hover:bg-blue-600 hover:text-white transition cursor-pointer"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => {
-                              setDeletingProduct(p);
-                              setIsDeleteModalOpen(true);
-                            }}
-                            title="Xoá sản phẩm"
-                            className="p-1.5 rounded-lg bg-stone-100 text-rose-600 hover:bg-rose-600 hover:text-white transition cursor-pointer"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
+            {/* Products Data Table */}
+            <div className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs sm:text-sm">
+                  <thead className="bg-[#0f2d22] text-white text-[11px] uppercase tracking-wider font-bold">
+                    <tr>
+                      <th className="py-4 px-4 sm:px-6">Sản Phẩm &amp; Quy Cách</th>
+                      <th className="py-4 px-4">Mã Định Danh (QR)</th>
+                      <th className="py-4 px-4">Số TCBSP &amp; Pháp Lý</th>
+                      <th className="py-4 px-4">Cơ Sở Sản Xuất</th>
+                      <th className="py-4 px-4">Trạng Thái</th>
+                      <th className="py-4 px-4 sm:px-6 text-right">Thao Tác</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-stone-100">
+                    {filteredProducts.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="text-center py-12 text-stone-500">
+                          <Layers className="w-10 h-10 text-stone-300 mx-auto mb-2" />
+                          <p className="font-semibold text-sm">Không tìm thấy sản phẩm nào</p>
+                          <p className="text-xs text-stone-400 mt-1">Hãy bấm "Thêm Sản Phẩm Mới" hoặc "Khởi Tạo Dữ Liệu Mẫu"</p>
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredProducts.map((p) => (
+                        <tr key={p._id || p.verificationCode} className="hover:bg-stone-50/70 transition-colors">
+                          
+                          {/* Col 1: Visual & Name */}
+                          <td className="py-4 px-4 sm:px-6">
+                            <div className="flex items-center gap-3">
+                              <div className="w-12 h-12 rounded-xl bg-stone-100 border border-stone-200 overflow-hidden shrink-0 flex items-center justify-center">
+                                <img
+                                  src={p.image || '/assets/keo_dua_ngoc_hai_spec.png'}
+                                  alt={p.name}
+                                  className="w-full h-full object-contain p-1"
+                                />
+                              </div>
+                              <div className="max-w-[220px]">
+                                <h4 className="font-bold text-stone-900 leading-tight text-xs sm:text-sm">
+                                  {p.name}
+                                </h4>
+                                <span className="text-[11px] text-stone-500 block mt-0.5 truncate">
+                                  {p.netWeight && `KL: ${p.netWeight}`} &bull; {p.expiry && `HSD: ${p.expiry}`}
+                                </span>
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* Col 2: Verification Code */}
+                          <td className="py-4 px-4">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-mono text-xs font-bold text-[#0f2d22] bg-[#84CC16]/20 px-2 py-0.5 rounded-md">
+                                {p.verificationCode}
+                              </span>
+                              <button
+                                onClick={() => handleCopyCode(p.verificationCode)}
+                                className="p-1 rounded hover:bg-stone-200 text-stone-400 hover:text-stone-700 transition"
+                                title="Sao chép mã"
+                              >
+                                {copiedCode === p.verificationCode ? (
+                                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                ) : (
+                                  <Copy className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                            </div>
+                          </td>
+
+                          {/* Col 3: Legal & Standards */}
+                          <td className="py-4 px-4">
+                            <div className="space-y-0.5 text-xs">
+                              <p className="font-bold text-stone-800">{p.tcbsp || 'Chưa công bố'}</p>
+                              {p.manufacturer?.attpCode && (
+                                <p className="text-[11px] text-stone-500">ATTP: {p.manufacturer.attpCode}</p>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Col 4: Manufacturer */}
+                          <td className="py-4 px-4">
+                            <div className="max-w-[180px] text-xs">
+                              <p className="font-semibold text-stone-900 truncate">
+                                {p.manufacturer?.name || 'Đang cập nhật'}
+                              </p>
+                              <p className="text-[11px] text-stone-500 truncate">
+                                {p.manufacturer?.phone || p.manufacturer?.address || '—'}
+                              </p>
+                            </div>
+                          </td>
+
+                          {/* Col 5: Status */}
+                          <td className="py-4 px-4">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                              <CheckCircle2 className="w-3 h-3" />
+                              <span>Đã Xác Thực</span>
+                            </span>
+                          </td>
+
+                          {/* Col 6: Actions */}
+                          <td className="py-4 px-4 sm:px-6 text-right">
+                            <div className="inline-flex items-center gap-1.5">
+                              {/* View on traceability */}
+                              <button
+                                onClick={() => onViewProduct(p._id || p.verificationCode)}
+                                className="p-2 rounded-xl bg-stone-100 hover:bg-[#0f2d22] text-stone-600 hover:text-white transition cursor-pointer"
+                                title="Xem trang truy xuất"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </button>
+
+                              {/* Download/View QR code */}
+                              <button
+                                onClick={() => {
+                                  setSelectedQrProduct(p);
+                                  setIsQrModalOpen(true);
+                                }}
+                                className="p-2 rounded-xl bg-stone-100 hover:bg-[#84CC16] text-stone-600 hover:text-[#0f2d22] transition cursor-pointer"
+                                title="Xuất / Tải mã QR"
+                              >
+                                <QrCode className="w-4 h-4" />
+                              </button>
+
+                              {/* Edit */}
+                              <button
+                                onClick={() => handleOpenEditModal(p)}
+                                className="p-2 rounded-xl bg-stone-100 hover:bg-[#0f2d22] text-stone-600 hover:text-white transition cursor-pointer"
+                                title="Chỉnh sửa sản phẩm"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+
+                              {/* Delete */}
+                              <button
+                                onClick={() => {
+                                  setDeletingProduct(p);
+                                  setIsDeleteModalOpen(true);
+                                }}
+                                className="p-2 rounded-xl bg-stone-100 hover:bg-rose-500 text-stone-600 hover:text-white transition cursor-pointer"
+                                title="Xoá sản phẩm"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
+
+          </div>
+        )}
+
+        {/* ======================================================== */}
+        {/* TAB 2: QR CODE REGISTRATION REQUESTS */}
+        {/* ======================================================== */}
+        {adminTab === 'qr_requests' && (
+          <div className="space-y-6">
+            
+            {/* Filter & Search Bar */}
+            <div className="bg-white p-4 rounded-3xl border border-stone-200 shadow-sm flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+              
+              <div className="flex items-center gap-3 flex-1 bg-stone-50 px-3 py-2 rounded-2xl border border-stone-200">
+                <Search className="w-4 h-4 text-stone-400" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Tìm theo tên người gửi, cơ sở, sản phẩm, số điện thoại..."
+                  className="w-full text-xs sm:text-sm bg-transparent outline-none text-stone-900"
+                />
+              </div>
+
+              {/* Status Filter Buttons */}
+              <div className="flex items-center gap-1.5 overflow-x-auto text-xs font-semibold">
+                <button
+                  onClick={() => setRequestFilter('all')}
+                  className={`px-3 py-1.5 rounded-xl transition cursor-pointer whitespace-nowrap ${
+                    requestFilter === 'all' ? 'bg-[#0f2d22] text-white' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+                  }`}
+                >
+                  Tất cả ({qrRequests.length})
+                </button>
+                <button
+                  onClick={() => setRequestFilter('pending')}
+                  className={`px-3 py-1.5 rounded-xl transition cursor-pointer whitespace-nowrap ${
+                    requestFilter === 'pending' ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-800 hover:bg-amber-100'
+                  }`}
+                >
+                  Chờ duyệt ({qrRequests.filter(r => r.status === 'pending' || !r.status).length})
+                </button>
+                <button
+                  onClick={() => setRequestFilter('contacted')}
+                  className={`px-3 py-1.5 rounded-xl transition cursor-pointer whitespace-nowrap ${
+                    requestFilter === 'contacted' ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-800 hover:bg-blue-100'
+                  }`}
+                >
+                  Đã liên hệ ({qrRequests.filter(r => r.status === 'contacted').length})
+                </button>
+                <button
+                  onClick={() => setRequestFilter('approved')}
+                  className={`px-3 py-1.5 rounded-xl transition cursor-pointer whitespace-nowrap ${
+                    requestFilter === 'approved' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                  }`}
+                >
+                  Đã cấp mã ({qrRequests.filter(r => r.status === 'approved').length})
+                </button>
+              </div>
+
+            </div>
+
+            {/* Requests Data Table */}
+            <div className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs sm:text-sm">
+                  <thead className="bg-[#0f2d22] text-white text-[11px] uppercase tracking-wider font-bold">
+                    <tr>
+                      <th className="py-4 px-4 sm:px-6">Cơ Sở &amp; Người Đăng Ký</th>
+                      <th className="py-4 px-4">Sản Phẩm Đăng Ký</th>
+                      <th className="py-4 px-4">Loại Tem &amp; SL</th>
+                      <th className="py-4 px-4">Thời Gian</th>
+                      <th className="py-4 px-4">Trạng Thái</th>
+                      <th className="py-4 px-4 sm:px-6 text-right">Thao Tác</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-100">
+                    {filteredRequests.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="text-center py-12 text-stone-500">
+                          <QrCode className="w-10 h-10 text-stone-300 mx-auto mb-2" />
+                          <p className="font-semibold text-sm">Chưa có đơn đăng ký cấp mã QR nào</p>
+                          <p className="text-xs text-stone-400 mt-1">Các yêu cầu từ form "Đăng Ký Cấp Mã QR" sẽ được hiển thị tại đây.</p>
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredRequests.map((req) => (
+                        <tr key={req._id} className="hover:bg-stone-50/70 transition-colors">
+                          
+                          {/* Col 1: Business & Contact */}
+                          <td className="py-4 px-4 sm:px-6">
+                            <div>
+                              <h4 className="font-bold text-stone-900 leading-tight text-xs sm:text-sm">
+                                {req.businessName || 'Cơ sở sản xuất'}
+                              </h4>
+                              <p className="text-xs text-stone-600 mt-0.5">
+                                Đại diện: <strong>{req.name}</strong>
+                              </p>
+                              <div className="flex items-center gap-2 mt-1 text-[11px] text-stone-500">
+                                <a href={`tel:${req.phone}`} className="text-[#0f2d22] font-bold hover:underline flex items-center gap-1">
+                                  <Phone className="w-3 h-3" />
+                                  <span>{req.phone}</span>
+                                </a>
+                                {req.email && (
+                                  <>
+                                    <span>&bull;</span>
+                                    <span>{req.email}</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* Col 2: Product Name */}
+                          <td className="py-4 px-4">
+                            <span className="font-bold text-[#0f2d22] text-xs sm:text-sm block">
+                              {req.productName}
+                            </span>
+                            {req.address && (
+                              <span className="text-[11px] text-stone-500 truncate block max-w-xs mt-0.5">
+                                {req.address}
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Col 3: QR Type & Quantity */}
+                          <td className="py-4 px-4">
+                            <span className="text-xs font-semibold text-stone-800 block">
+                              {req.qrType || 'Tem truy xuất QR'}
+                            </span>
+                            <span className="text-[11px] text-[#84CC16] bg-[#0f2d22] px-2 py-0.5 rounded font-mono inline-block mt-0.5">
+                              {req.quantity || '1.000 tem'}
+                            </span>
+                          </td>
+
+                          {/* Col 4: Time */}
+                          <td className="py-4 px-4 text-xs text-stone-500 whitespace-nowrap">
+                            {req.createdAt ? new Date(req.createdAt).toLocaleDateString('vi-VN') : 'Mới'}
+                          </td>
+
+                          {/* Col 5: Status */}
+                          <td className="py-4 px-4">
+                            {req.status === 'approved' ? (
+                              <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 inline-flex items-center gap-1">
+                                <CheckCircle2 className="w-3 h-3" />
+                                <span>Đã cấp mã</span>
+                              </span>
+                            ) : req.status === 'contacted' ? (
+                              <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 inline-flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                <span>Đã liên hệ</span>
+                              </span>
+                            ) : req.status === 'rejected' ? (
+                              <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800">
+                                Từ chối
+                              </span>
+                            ) : (
+                              <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 inline-flex items-center gap-1">
+                                <Sparkles className="w-3 h-3" />
+                                <span>Chờ duyệt</span>
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Col 6: Actions */}
+                          <td className="py-4 px-4 sm:px-6 text-right">
+                            <div className="inline-flex items-center gap-1.5">
+                              {/* Quick create product */}
+                              <button
+                                onClick={() => handleConvertRequestToProduct(req)}
+                                className="px-2.5 py-1.5 rounded-xl bg-[#84CC16] hover:bg-[#74B843] text-[#0f2d22] text-xs font-black shadow-sm transition cursor-pointer flex items-center gap-1"
+                                title="Tạo nhanh sản phẩm từ đơn này"
+                              >
+                                <Sparkles className="w-3.5 h-3.5" />
+                                <span className="hidden lg:inline">Tạo SP</span>
+                              </button>
+
+                              {/* View detail */}
+                              <button
+                                onClick={() => setViewingRequest(req)}
+                                className="p-2 rounded-xl bg-stone-100 hover:bg-[#0f2d22] text-stone-600 hover:text-white transition cursor-pointer"
+                                title="Chi tiết đơn"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </button>
+
+                              {/* Delete */}
+                              <button
+                                onClick={() => handleDeleteRequest(req._id)}
+                                className="p-2 rounded-xl bg-stone-100 hover:bg-rose-500 text-stone-600 hover:text-white transition cursor-pointer"
+                                title="Xoá đơn"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
           </div>
         )}
 
       </div>
 
-      {/* ==================================================================== */}
-      {/* MODAL: Thêm / Sửa Sản Phẩm (Form Add/Edit) */}
-      {/* ==================================================================== */}
+      {/* ======================================================== */}
+      {/* MODAL 1: ADD / EDIT PRODUCT */}
+      {/* ======================================================== */}
       {isEditModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden border border-stone-200">
-
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto bg-stone-900/75 backdrop-blur-sm">
+          <div className="relative w-full max-w-4xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-stone-200 z-10 my-8">
+            
             {/* Modal Header */}
-            <div className="p-6 bg-gradient-to-r from-[#174C3C] to-[#1F634E] text-white flex items-center justify-between shrink-0">
+            <div className="bg-[#0f2d22] text-white p-6 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center">
-                  {editingProduct ? <Edit2 className="w-5 h-5 text-[#DFCA9B]" /> : <Plus className="w-5 h-5 text-[#DFCA9B]" />}
+                <div className="w-10 h-10 rounded-xl bg-[#84CC16] text-[#0f2d22] flex items-center justify-center font-black">
+                  <QrCode className="w-6 h-6" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold">
-                    {editingProduct ? 'Chỉnh Sửa Thông Tin Sản Phẩm' : 'Thêm Sản Phẩm Mới Vào Cổng VCheck'}
+                  <h3 className="text-lg font-black text-white">
+                    {editingProduct ? 'Chỉnh Sửa Thông Tin Sản Phẩm' : 'Thêm Sản Phẩm Mới Vào Hệ Thống dntrace.com'}
                   </h3>
-                  <p className="text-xs text-stone-200">
-                    Dữ liệu sẽ lưu vào MongoDB &amp; hình ảnh tự động upload lên Cloudinary
+                  <p className="text-xs text-stone-300">
+                    Điền đầy đủ thông tin để cấp tem truy xuất nguồn gốc chính hãng
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setIsEditModalOpen(false)}
-                className="p-2 rounded-xl bg-white/10 hover:bg-white/20 transition cursor-pointer"
+                className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Modal Tab Switcher */}
-            <div className="flex items-center gap-1 p-2 bg-stone-100 border-b border-stone-200 shrink-0 overflow-x-auto">
+            {/* Modal Form Tabs */}
+            <div className="flex items-center gap-2 p-2 bg-stone-100 border-b border-stone-200 overflow-x-auto text-xs font-bold">
               <button
                 type="button"
-                onClick={() => setActiveTab('general')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 ${activeTab === 'general' ? 'bg-white text-[#174C3C] shadow-sm' : 'text-stone-600 hover:text-stone-900'
-                  }`}
+                onClick={() => setModalTab('general')}
+                className={`px-3.5 py-2 rounded-xl transition cursor-pointer whitespace-nowrap ${
+                  modalTab === 'general' ? 'bg-white text-[#0f2d22] shadow-sm' : 'text-stone-600 hover:text-stone-900'
+                }`}
               >
-                1. Thông Tin &amp; Ảnh Cloudinary
+                1. Thông Tin Chung &amp; Pháp Lý
               </button>
               <button
                 type="button"
-                onClick={() => setActiveTab('details')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 ${activeTab === 'details' ? 'bg-white text-[#174C3C] shadow-sm' : 'text-stone-600 hover:text-stone-900'
-                  }`}
+                onClick={() => setModalTab('specs')}
+                className={`px-3.5 py-2 rounded-xl transition cursor-pointer whitespace-nowrap ${
+                  modalTab === 'specs' ? 'bg-white text-[#0f2d22] shadow-sm' : 'text-stone-600 hover:text-stone-900'
+                }`}
               >
                 2. Quy Cách &amp; Thành Phần
               </button>
               <button
                 type="button"
-                onClick={() => setActiveTab('standards')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 ${activeTab === 'standards' ? 'bg-white text-[#174C3C] shadow-sm' : 'text-stone-600 hover:text-stone-900'
-                  }`}
+                onClick={() => setModalTab('producer')}
+                className={`px-3.5 py-2 rounded-xl transition cursor-pointer whitespace-nowrap ${
+                  modalTab === 'producer' ? 'bg-white text-[#0f2d22] shadow-sm' : 'text-stone-600 hover:text-stone-900'
+                }`}
               >
-                3. Tiêu Chuẩn &amp; Pháp Lý ({formData.standards.length})
+                3. Đơn Vị Sản Xuất
               </button>
               <button
                 type="button"
-                onClick={() => setActiveTab('manufacturer')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 ${activeTab === 'manufacturer' ? 'bg-white text-[#174C3C] shadow-sm' : 'text-stone-600 hover:text-stone-900'
-                  }`}
+                onClick={() => setModalTab('content')}
+                className={`px-3.5 py-2 rounded-xl transition cursor-pointer whitespace-nowrap ${
+                  modalTab === 'content' ? 'bg-white text-[#0f2d22] shadow-sm' : 'text-stone-600 hover:text-stone-900'
+                }`}
               >
-                4. Cơ Sở Sản Xuất &amp; Bản Đồ
+                4. Câu Chuyện, Nguyên Liệu &amp; Bản Đồ
+              </button>
+              <button
+                type="button"
+                onClick={() => setModalTab('images')}
+                className={`px-3.5 py-2 rounded-xl transition cursor-pointer whitespace-nowrap ${
+                  modalTab === 'images' ? 'bg-white text-[#0f2d22] shadow-sm' : 'text-stone-600 hover:text-stone-900'
+                }`}
+              >
+                5. Hình Ảnh Sản Phẩm
               </button>
             </div>
 
-            {/* Modal Body / Form */}
-            <form onSubmit={handleSaveProduct} className="flex-1 overflow-y-auto p-6 space-y-6">
-
-              {/* TAB 1: General Info & Cloudinary Image Upload */}
-              {activeTab === 'general' && (
+            {/* Form Body */}
+            <form onSubmit={handleSaveProduct} className="p-6 sm:p-8 max-h-[70vh] overflow-y-auto space-y-5">
+              
+              {/* TAB 1: GENERAL & LEGAL */}
+              {modalTab === 'general' && (
                 <div className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="md:col-span-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
                       <label className="block text-xs font-bold text-stone-700 mb-1">
-                        Tên sản phẩm <span className="text-red-500">*</span>
+                        Tên sản phẩm <span className="text-rose-500">*</span>
                       </label>
                       <input
                         type="text"
                         required
                         value={formData.name}
                         onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        placeholder="Ví dụ: NGŨ CỐC DINH DƯỠNG CHO NGƯỜI CAO TUỔI"
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 text-xs focus:ring-1 focus:ring-[#174C3C] focus:border-[#174C3C]"
+                        placeholder="Ví dụ: Kẹo dừa dẻo Ngọc Hải"
+                        className="w-full text-xs sm:text-sm p-3 rounded-xl border border-stone-200 outline-none focus:border-[#0f2d22] bg-white"
                       />
                     </div>
 
                     <div>
                       <label className="block text-xs font-bold text-stone-700 mb-1">
-                        Mã định danh / VCheck <span className="text-red-500">*</span>
+                        Mã định danh xác thực dntrace <span className="text-rose-500">*</span>
                       </label>
                       <input
                         type="text"
                         required
                         value={formData.verificationCode}
                         onChange={(e) => setFormData({ ...formData, verificationCode: e.target.value })}
-                        placeholder="Ví dụ: VCHECK-HF-2022-049189"
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 text-xs font-mono font-bold focus:ring-1 focus:ring-[#174C3C] focus:border-[#174C3C]"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-stone-700 mb-1">
-                        Trạng thái xác thực
-                      </label>
-                      <select
-                        value={formData.status}
-                        onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 text-xs focus:ring-1 focus:ring-[#174C3C] focus:border-[#174C3C]"
-                      >
-                        <option value="ĐÃ XÁC THỰC THÀNH CÔNG">ĐÃ XÁC THỰC THÀNH CÔNG</option>
-                        <option value="ĐANG KIỂM ĐỊNH LÔ HÀNG">ĐANG KIỂM ĐỊNH LÔ HÀNG</option>
-                        <option value="ĐẠT CHUẨN OCOP 4 SAO">ĐẠT CHUẨN OCOP 4 SAO</option>
-                        <option value="CHỨNG NHẬN HỢP CHUẨN">CHỨNG NHẬN HỢP CHUẨN</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-stone-700 mb-1">
-                        Hệ thống cổng truy xuất
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.system}
-                        onChange={(e) => setFormData({ ...formData, system: e.target.value })}
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 text-xs"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-stone-700 mb-1">
-                        Đơn vị cung cấp giải pháp
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.provider}
-                        onChange={(e) => setFormData({ ...formData, provider: e.target.value })}
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 text-xs"
+                        placeholder="Ví dụ: DNTRACE-KDNH-2026-049189"
+                        className="w-full text-xs sm:text-sm p-3 rounded-xl border border-stone-200 font-mono font-bold text-[#0f2d22] outline-none focus:border-[#0f2d22] bg-white"
                       />
                     </div>
                   </div>
 
-                  {/* Cloudinary Image Section */}
-                  <div className="pt-4 border-t border-stone-200">
-                    <div className="flex items-center justify-between mb-2">
-                      <label className="block text-xs font-bold text-stone-700">
-                        Hình ảnh sản phẩm (Lưu trữ Cloudinary)
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-stone-700 mb-1">
+                        Số TCBSP (Tự công bố sản phẩm)
                       </label>
-                      {formData.image && formData.image.includes('cloudinary') && (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-sky-700 bg-sky-100 px-2 py-0.5 rounded-full">
-                          <Cloud className="w-3 h-3" />
-                          <span>Đã lưu trên Cloudinary</span>
-                        </span>
-                      )}
+                      <input
+                        type="text"
+                        value={formData.tcbsp}
+                        onChange={(e) => setFormData({ ...formData, tcbsp: e.target.value })}
+                        placeholder="Ví dụ: Số TCBSP: 01/NGOHAI/2026"
+                        className="w-full text-xs sm:text-sm p-3 rounded-xl border border-stone-200 outline-none focus:border-[#0f2d22] bg-white"
+                      />
                     </div>
 
-                    <div className="flex flex-col sm:flex-row items-center gap-4">
-                      <div className="w-28 h-28 rounded-2xl bg-stone-100 border border-stone-300 overflow-hidden flex items-center justify-center shrink-0 relative">
-                        {formData.image ? (
-                          <img src={formData.image} alt="Preview" className="w-full h-full object-contain" />
-                        ) : (
-                          <ImageIcon className="w-8 h-8 text-stone-400" />
-                        )}
-                        {uploadingImage && (
-                          <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                            <RefreshCw className="w-6 h-6 text-white animate-spin" />
-                          </div>
-                        )}
-                      </div>
+                    <div>
+                      <label className="block text-xs font-bold text-stone-700 mb-1">
+                        Số Tiêu chuẩn
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.standardCode}
+                        onChange={(e) => setFormData({ ...formData, standardCode: e.target.value })}
+                        placeholder="Để trống hoặc điền mã tiêu chuẩn"
+                        className="w-full text-xs sm:text-sm p-3 rounded-xl border border-stone-200 outline-none focus:border-[#0f2d22] bg-white"
+                      />
+                    </div>
+                  </div>
 
-                      <div className="flex-1 space-y-2 w-full">
-                        <input
-                          type="text"
-                          value={formData.image}
-                          onChange={(e) => setFormData({ ...formData, image: e.target.value })}
-                          placeholder="Dán link ảnh URL hoặc tải file từ máy tính để tự lưu lên Cloudinary..."
-                          className="w-full px-3.5 py-2 rounded-xl border border-stone-300 text-xs"
-                        />
-                        <div className="flex flex-wrap items-center gap-2">
-                          <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#174C3C] hover:bg-[#205F4D] text-white text-xs font-bold cursor-pointer transition shadow-sm">
-                            <CloudUpload className="w-3.5 h-3.5 text-[#DFCA9B]" />
-                            <span>{uploadingImage ? 'Đang tải lên Cloudinary...' : 'Tải ảnh lên Cloudinary'}</span>
-                            <input
-                              type="file"
-                              accept="image/*"
-                              disabled={uploadingImage}
-                              onChange={handleImageUpload}
-                              className="hidden"
-                            />
-                          </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-stone-700 mb-1">
+                        Trạng thái hiển thị
+                      </label>
+                      <select
+                        value={formData.status}
+                        onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                        className="w-full text-xs sm:text-sm p-3 rounded-xl border border-stone-200 outline-none focus:border-[#0f2d22] bg-white"
+                      >
+                        <option value="ĐÃ XÁC THỰC THÀNH CÔNG">ĐÃ XÁC THỰC THÀNH CÔNG</option>
+                        <option value="ĐANG CẬP NHẬT DỮ LIỆU">ĐANG CẬP NHẬT DỮ LIỆU</option>
+                        <option value="CHỜ XÁC MINH ATTP">CHỜ XÁC MINH ATTP</option>
+                      </select>
+                    </div>
 
-                          <span className="text-[11px] text-stone-400">hoặc chọn mẫu:</span>
-                          <button
-                            type="button"
-                            onClick={() => setFormData({ ...formData, image: '/assets/ngu_coc_huongfarm.jpg' })}
-                            className="text-[11px] text-[#174C3C] hover:underline cursor-pointer"
-                          >
-                            Ngũ cốc
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setFormData({ ...formData, image: '/assets/hero_agarwood.jpg' })}
-                            className="text-[11px] text-[#174C3C] hover:underline cursor-pointer"
-                          >
-                            Trầm hương
-                          </button>
-                        </div>
-                      </div>
+                    <div className="flex items-center gap-2 pt-6">
+                      <input
+                        type="checkbox"
+                        id="isDefault"
+                        checked={formData.isDefault}
+                        onChange={(e) => setFormData({ ...formData, isDefault: e.target.checked })}
+                        className="w-4 h-4 text-[#0f2d22] rounded"
+                      />
+                      <label htmlFor="isDefault" className="text-xs font-bold text-stone-700 cursor-pointer">
+                        Đặt làm sản phẩm mặc định khi mở trang truy xuất
+                      </label>
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* TAB 2: Details & Ingredients */}
-              {activeTab === 'details' && (
+              {/* TAB 2: SPECS & INGREDIENTS */}
+              {modalTab === 'specs' && (
                 <div className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-stone-700 mb-1">
+                      Thành phần
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={formData.ingredients}
+                      onChange={(e) => setFormData({ ...formData, ingredients: e.target.value })}
+                      placeholder="Ví dụ: Dừa 50%, đường, mạch nha, bánh tráng, mè"
+                      className="w-full text-xs sm:text-sm p-3 rounded-xl border border-stone-200 outline-none focus:border-[#0f2d22] bg-white"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div>
                       <label className="block text-xs font-bold text-stone-700 mb-1">
-                        Khối lượng tịnh
+                        Ngày sản xuất
                       </label>
                       <input
                         type="text"
-                        value={formData.netWeight}
-                        onChange={(e) => setFormData({ ...formData, netWeight: e.target.value })}
-                        placeholder="Ví dụ: 500g, 250g, 1 Hộp"
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 text-xs"
+                        value={formData.manufactureDate}
+                        onChange={(e) => setFormData({ ...formData, manufactureDate: e.target.value })}
+                        placeholder="Ví dụ: Xem trên bao bì"
+                        className="w-full text-xs sm:text-sm p-3 rounded-xl border border-stone-200 outline-none focus:border-[#0f2d22] bg-white"
                       />
                     </div>
                     <div>
@@ -770,136 +1160,73 @@ export default function AdminProductManager({
                         type="text"
                         value={formData.expiry}
                         onChange={(e) => setFormData({ ...formData, expiry: e.target.value })}
-                        placeholder="Ví dụ: 12 tháng kể từ NSX"
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 text-xs"
+                        placeholder="Ví dụ: đang cập nhật hoặc 12 tháng"
+                        className="w-full text-xs sm:text-sm p-3 rounded-xl border border-stone-200 outline-none focus:border-[#0f2d22] bg-white"
                       />
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-stone-700 mb-1">
-                        Ngày sản xuất
+                        Khối lượng tịnh
                       </label>
                       <input
                         type="text"
-                        value={formData.manufactureDate}
-                        onChange={(e) => setFormData({ ...formData, manufactureDate: e.target.value })}
-                        placeholder="Ví dụ: Xem chi tiết trên bao bì"
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 text-xs"
+                        value={formData.netWeight}
+                        onChange={(e) => setFormData({ ...formData, netWeight: e.target.value })}
+                        placeholder="Ví dụ: đang cập nhật hoặc 500g"
+                        className="w-full text-xs sm:text-sm p-3 rounded-xl border border-stone-200 outline-none focus:border-[#0f2d22] bg-white"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-stone-700 mb-1">
+                        Hướng dẫn sử dụng
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={formData.usageGuide}
+                        onChange={(e) => setFormData({ ...formData, usageGuide: e.target.value })}
+                        placeholder="Ví dụ: xem chi tiết trên bao bì"
+                        className="w-full text-xs sm:text-sm p-3 rounded-xl border border-stone-200 outline-none focus:border-[#0f2d22] bg-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-stone-700 mb-1">
+                        Bảo quản
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={formData.storageGuide}
+                        onChange={(e) => setFormData({ ...formData, storageGuide: e.target.value })}
+                        placeholder="Ví dụ: Bảo quản ở nơi khô ráo thoáng mát tránh ánh nắng trực tiếp"
+                        className="w-full text-xs sm:text-sm p-3 rounded-xl border border-stone-200 outline-none focus:border-[#0f2d22] bg-white"
                       />
                     </div>
                   </div>
 
                   <div>
                     <label className="block text-xs font-bold text-stone-700 mb-1">
-                      Thành phần chi tiết của sản phẩm
+                      Cảnh báo (nếu có)
                     </label>
-                    <textarea
-                      rows={3}
-                      value={formData.ingredients}
-                      onChange={(e) => setFormData({ ...formData, ingredients: e.target.value })}
-                      placeholder="Mô tả các loại thành phần, nông sản, tỷ lệ..."
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 text-xs leading-relaxed"
+                    <input
+                      type="text"
+                      value={formData.warning}
+                      onChange={(e) => setFormData({ ...formData, warning: e.target.value })}
+                      placeholder="Để trống hoặc ghi cảnh báo dị ứng, hạn dùng..."
+                      className="w-full text-xs sm:text-sm p-3 rounded-xl border border-stone-200 outline-none focus:border-[#0f2d22] bg-white"
                     />
                   </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-stone-700 mb-1">
-                        Hướng dẫn sử dụng
-                      </label>
-                      <textarea
-                        rows={3}
-                        value={formData.usageGuide}
-                        onChange={(e) => setFormData({ ...formData, usageGuide: e.target.value })}
-                        placeholder="Cách pha chế, liều lượng dùng..."
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 text-xs"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-stone-700 mb-1">
-                        Hướng dẫn bảo quản
-                      </label>
-                      <textarea
-                        rows={3}
-                        value={formData.storageGuide}
-                        onChange={(e) => setFormData({ ...formData, storageGuide: e.target.value })}
-                        placeholder="Nơi khô ráo, tránh ánh nắng..."
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 text-xs"
-                      />
-                    </div>
-                  </div>
                 </div>
               )}
 
-              {/* TAB 3: Standards & Food Safety */}
-              {activeTab === 'standards' && (
+              {/* TAB 3: PRODUCER */}
+              {modalTab === 'producer' && (
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between pb-2 border-b border-stone-200">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <h4 className="text-xs font-bold text-stone-900 uppercase">
-                        Hồ Sơ Tiêu Chuẩn &amp; Công Bố Sản Phẩm
-                      </h4>
-                      <p className="text-[11px] text-stone-500">
-                        Hiển thị tại Tab "Hồ Sơ Tiêu Chuẩn &amp; ATTP" trên trang truy xuất
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleAddStandard}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#174C3C] text-white text-xs font-bold hover:bg-[#205F4D] cursor-pointer transition"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Thêm Dòng Tiêu Chuẩn</span>
-                    </button>
-                  </div>
-
-                  <div className="space-y-3">
-                    {formData.standards.map((std, idx) => (
-                      <div key={idx} className="flex items-center gap-3 p-3 rounded-xl bg-stone-50 border border-stone-200">
-                        <div className="flex-1">
-                          <label className="block text-[10px] font-bold text-stone-500 uppercase mb-1">
-                            Tên hồ sơ / Chứng nhận
-                          </label>
-                          <input
-                            type="text"
-                            value={std.label}
-                            onChange={(e) => handleStandardChange(idx, 'label', e.target.value)}
-                            placeholder="Ví dụ: Số tự công bố sản phẩm (CBSP)"
-                            className="w-full px-3 py-1.5 rounded-lg border border-stone-300 text-xs"
-                          />
-                        </div>
-                        <div className="flex-1">
-                          <label className="block text-[10px] font-bold text-stone-500 uppercase mb-1">
-                            Mã số / Số hiệu
-                          </label>
-                          <input
-                            type="text"
-                            value={std.value}
-                            onChange={(e) => handleStandardChange(idx, 'value', e.target.value)}
-                            placeholder="Ví dụ: 01/CSTP XANH HUUONGFARM/2022"
-                            className="w-full px-3 py-1.5 rounded-lg border border-stone-300 text-xs font-mono"
-                          />
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveStandard(idx)}
-                          className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition cursor-pointer mt-4"
-                          title="Xoá dòng này"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* TAB 4: Manufacturer & Map */}
-              {activeTab === 'manufacturer' && (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="md:col-span-2">
                       <label className="block text-xs font-bold text-stone-700 mb-1">
-                        Tên cơ sở / Hợp tác xã / Công ty sản xuất
+                        Tên đơn vị / Cơ sở sản xuất
                       </label>
                       <input
                         type="text"
@@ -908,72 +1235,8 @@ export default function AdminProductManager({
                           ...formData,
                           manufacturer: { ...formData.manufacturer, name: e.target.value }
                         })}
-                        placeholder="Ví dụ: Hộ Kinh Doanh Cơ Sở Thực Phẩm Xanh HuongFarm"
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 text-xs"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-stone-700 mb-1">
-                        Số ĐKKD / Mã số doanh nghiệp
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.manufacturer.businessId}
-                        onChange={(e) => setFormData({
-                          ...formData,
-                          manufacturer: { ...formData.manufacturer, businessId: e.target.value }
-                        })}
-                        placeholder="Ví dụ: 049189001652"
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 text-xs font-mono"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-stone-700 mb-1">
-                        Số điện thoại hotline
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.manufacturer.phone}
-                        onChange={(e) => setFormData({
-                          ...formData,
-                          manufacturer: { ...formData.manufacturer, phone: e.target.value }
-                        })}
-                        placeholder="Ví dụ: 0338 627 931"
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 text-xs"
-                      />
-                    </div>
-
-                    <div className="md:col-span-2">
-                      <label className="block text-xs font-bold text-stone-700 mb-1">
-                        Địa chỉ nơi sản xuất
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.manufacturer.address}
-                        onChange={(e) => setFormData({
-                          ...formData,
-                          manufacturer: { ...formData.manufacturer, address: e.target.value }
-                        })}
-                        placeholder="Ví dụ: Thôn Trung Sơn, Xã Quế Sơn Trung, Đà Nẵng / Quảng Nam"
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 text-xs"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-stone-700 mb-1">
-                        Website chính thức
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.manufacturer.website}
-                        onChange={(e) => setFormData({
-                          ...formData,
-                          manufacturer: { ...formData.manufacturer, website: e.target.value }
-                        })}
-                        placeholder="Ví dụ: huongfarm.com"
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 text-xs"
+                        placeholder="Ví dụ: Hộ Kinh Doanh Đặng Ngọc Hải"
+                        className="w-full text-xs sm:text-sm p-3 rounded-xl border border-stone-200 outline-none focus:border-[#0f2d22] bg-white"
                       />
                     </div>
 
@@ -989,189 +1252,685 @@ export default function AdminProductManager({
                           manufacturer: { ...formData.manufacturer, country: e.target.value }
                         })}
                         placeholder="Việt Nam"
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 text-xs"
+                        className="w-full text-xs sm:text-sm p-3 rounded-xl border border-stone-200 outline-none focus:border-[#0f2d22] bg-white"
                       />
                     </div>
+                  </div>
 
-                    <div className="md:col-span-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
                       <label className="block text-xs font-bold text-stone-700 mb-1">
-                        Link nhúng Bản đồ Google Maps (Embed URL)
+                        Số XNCK ATTP
                       </label>
                       <input
                         type="text"
-                        value={formData.mapEmbed}
-                        onChange={(e) => setFormData({ ...formData, mapEmbed: e.target.value })}
-                        placeholder="https://www.google.com/maps/embed?pb=..."
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 text-xs font-mono text-stone-600"
+                        value={formData.manufacturer.attpCode}
+                        onChange={(e) => setFormData({
+                          ...formData,
+                          manufacturer: { ...formData.manufacturer, attpCode: e.target.value }
+                        })}
+                        placeholder="Ví dụ: 11/XNCK-KTHT"
+                        className="w-full text-xs sm:text-sm p-3 rounded-xl border border-stone-200 outline-none focus:border-[#0f2d22] bg-white"
                       />
-                      <p className="text-[11px] text-stone-400 mt-1">
-                        (Mở Google Maps &rarr; Chia sẻ &rarr; Nhúng bản đồ &rarr; Sao chép link trong thuộc tính src)
-                      </p>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-stone-700 mb-1">
+                        Số đăng ký kinh doanh (ĐKKD)
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.manufacturer.businessId}
+                        onChange={(e) => setFormData({
+                          ...formData,
+                          manufacturer: { ...formData.manufacturer, businessId: e.target.value }
+                        })}
+                        placeholder="Ví dụ: 049189001652"
+                        className="w-full text-xs sm:text-sm p-3 rounded-xl border border-stone-200 outline-none focus:border-[#0f2d22] bg-white"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-stone-700 mb-1">
+                      Địa chỉ liên lạc
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.manufacturer.address}
+                      onChange={(e) => setFormData({
+                        ...formData,
+                        manufacturer: { ...formData.manufacturer, address: e.target.value }
+                      })}
+                      placeholder="Ví dụ: Thôn Thắng Đông, xã Quế Sơn, thành phố Đà Nẵng"
+                      className="w-full text-xs sm:text-sm p-3 rounded-xl border border-stone-200 outline-none focus:border-[#0f2d22] bg-white"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-stone-700 mb-1">
+                        Di động / Hotline đặt hàng
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.manufacturer.phone}
+                        onChange={(e) => setFormData({
+                          ...formData,
+                          manufacturer: { ...formData.manufacturer, phone: e.target.value }
+                        })}
+                        placeholder="Ví dụ: 0982.101.377"
+                        className="w-full text-xs sm:text-sm p-3 rounded-xl border border-stone-200 outline-none focus:border-[#0f2d22] bg-white"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-stone-700 mb-1">
+                        Website cơ sở
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.manufacturer.website}
+                        onChange={(e) => setFormData({
+                          ...formData,
+                          manufacturer: { ...formData.manufacturer, website: e.target.value }
+                        })}
+                        placeholder="Ví dụ: http://keongochaiqs.vn/"
+                        className="w-full text-xs sm:text-sm p-3 rounded-xl border border-stone-200 outline-none focus:border-[#0f2d22] bg-white"
+                      />
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* Modal Footer */}
-              <div className="pt-4 border-t border-stone-200 flex items-center justify-end gap-3 shrink-0">
+              {/* TAB 4: EXTENDED CONTENT */}
+              {modalTab === 'content' && (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-stone-700 mb-1">
+                      CÂU CHUYỆN SẢN PHẨM
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={formData.story}
+                      onChange={(e) => setFormData({ ...formData, story: e.target.value })}
+                      placeholder="Kể lại câu chuyện truyền thống, nguồn cảm hứng hoặc quy trình làm nghề..."
+                      className="w-full text-xs sm:text-sm p-3 rounded-xl border border-stone-200 outline-none focus:border-[#0f2d22] bg-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-stone-700 mb-1">
+                      NGUYÊN LIỆU ĐẦU VÀO
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={formData.rawMaterials}
+                      onChange={(e) => setFormData({ ...formData, rawMaterials: e.target.value })}
+                      placeholder="Mô tả nguồn gốc nguyên liệu sạch, tiêu chuẩn tuyển chọn..."
+                      className="w-full text-xs sm:text-sm p-3 rounded-xl border border-stone-200 outline-none focus:border-[#0f2d22] bg-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-stone-700 mb-1">
+                      BẢN ĐỒ VÙNG NGUYÊN LIỆU / NƠI SẢN XUẤT (Link Google Maps Embed hoặc thẻ &lt;iframe&gt;)
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={formData.mapEmbed}
+                      onChange={(e) => setFormData({ ...formData, mapEmbed: e.target.value })}
+                      placeholder="Dán link src Google Maps hoặc toàn bộ thẻ iframe..."
+                      className="w-full text-xs sm:text-sm p-3 rounded-xl border border-stone-200 font-mono text-xs outline-none focus:border-[#0f2d22] bg-white"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 5: IMAGES */}
+              {modalTab === 'images' && (
+                <div className="space-y-6">
+                  
+                  {/* Uploading Progress Indicator */}
+                  {uploadingImage && (
+                    <div className="p-4 rounded-2xl bg-[#84CC16]/20 border border-[#84CC16]/40 flex items-center gap-3 animate-pulse">
+                      <RefreshCw className="w-5 h-5 text-[#0f2d22] animate-spin shrink-0" />
+                      <div className="space-y-0.5">
+                        <p className="text-xs font-black text-[#0f2d22]">
+                          {uploadProgressText || 'Đang xử lý và tải ảnh lên Cloudinary...'}
+                        </p>
+                        <p className="text-[11px] text-stone-600">
+                          Hệ thống đang mã hóa, tối ưu dung lượng và lưu trữ trực tiếp trên đám mây Cloudinary.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 1. PRIMARY PRODUCT IMAGE */}
+                  <div className="p-5 rounded-2xl bg-stone-50 border border-stone-200 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <label className="block text-xs font-black text-stone-900 uppercase tracking-wide">
+                          Ảnh đại diện sản phẩm chính (Primary Image)
+                        </label>
+                        <p className="text-[11px] text-stone-500">
+                          Ảnh xuất hiện đầu tiên trên cổng truy xuất và tem mã QR
+                        </p>
+                      </div>
+                      {formData.image && formData.image.includes('cloudinary') && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#84CC16]/30 text-[#0f2d22] border border-[#84CC16]/50">
+                          <Cloud className="w-3 h-3 text-[#0f2d22]" />
+                          <span>Đã lưu trên Cloudinary</span>
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                      {/* Image Preview */}
+                      <div className="w-28 h-28 rounded-2xl border-2 border-dashed border-stone-300 p-1.5 bg-white overflow-hidden shrink-0 flex items-center justify-center relative group">
+                        {formData.image ? (
+                          <>
+                            <img src={formData.image} alt="Preview chính" className="w-full h-full object-contain" />
+                            <button
+                              type="button"
+                              onClick={() => setPreviewLightboxImg(formData.image)}
+                              className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white"
+                              title="Xem ảnh lớn"
+                            >
+                              <ZoomIn className="w-5 h-5" />
+                            </button>
+                          </>
+                        ) : (
+                          <ImageIcon className="w-8 h-8 text-stone-300" />
+                        )}
+                      </div>
+
+                      {/* Controls */}
+                      <div className="flex-1 space-y-2.5 w-full">
+                        <div className="flex gap-2">
+                          <label className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-[#0f2d22] hover:bg-[#194535] text-white text-xs font-bold cursor-pointer transition flex items-center justify-center gap-2 shadow-sm">
+                            <CloudUpload className="w-4 h-4 text-[#84CC16]" />
+                            <span>Tải ảnh chính lên Cloudinary</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={handlePrimaryImageUpload}
+                              disabled={uploadingImage}
+                            />
+                          </label>
+
+                          {formData.image && (
+                            <button
+                              type="button"
+                              onClick={() => setFormData(prev => ({ ...prev, image: '' }))}
+                              className="px-3 py-2.5 rounded-xl bg-stone-200 hover:bg-stone-300 text-stone-700 text-xs font-bold transition"
+                            >
+                              Xoá
+                            </button>
+                          )}
+                        </div>
+
+                        {/* URL input */}
+                        <div>
+                          <input
+                            type="text"
+                            value={formData.image}
+                            onChange={(e) => setFormData({ ...formData, image: e.target.value })}
+                            placeholder="Hoặc dán URL ảnh trực tiếp vào đây..."
+                            className="w-full text-xs p-2.5 rounded-xl border border-stone-200 outline-none focus:border-[#0f2d22] bg-white font-mono text-stone-700"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 2. MULTIPLE GALLERY IMAGES UPLOAD TO CLOUDINARY */}
+                  <div className="p-5 rounded-2xl bg-white border border-stone-200 shadow-sm space-y-4">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div>
+                        <h4 className="text-xs font-black text-stone-900 uppercase tracking-wide flex items-center gap-2">
+                          <span>Thư viện hình ảnh sản phẩm (HÌNH ẢNH SẢN PHẨM)</span>
+                          <span className="px-2 py-0.5 rounded-full bg-[#84CC16]/20 text-[#0f2d22] text-[10px] font-bold">
+                            {(formData.gallery || []).length} ảnh
+                          </span>
+                        </h4>
+                        <p className="text-[11px] text-stone-500">
+                          Cho phép chọn và upload <strong>NHIỀU ẢNH CÙNG LÚC</strong> lên Cloudinary
+                        </p>
+                      </div>
+
+                      {/* Manual URL adder */}
+                      <div className="flex items-center gap-1.5 w-full sm:w-auto">
+                        <input
+                          type="text"
+                          value={manualGalleryUrl}
+                          onChange={(e) => setManualGalleryUrl(e.target.value)}
+                          placeholder="Dán link ảnh thêm..."
+                          className="text-xs p-2 rounded-xl border border-stone-200 outline-none bg-stone-50 w-full sm:w-48"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleAddManualGalleryUrl}
+                          className="px-3 py-2 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold shrink-0"
+                        >
+                          Thêm link
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Drag and Drop Zone for Multiple Files */}
+                    <div
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        setDragActive(true);
+                      }}
+                      onDragLeave={() => setDragActive(false)}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setDragActive(false);
+                        handleMultipleGalleryUpload(e);
+                      }}
+                      className={`relative border-2 border-dashed rounded-2xl p-6 sm:p-8 text-center transition-all ${
+                        dragActive
+                          ? 'border-[#84CC16] bg-[#84CC16]/10 scale-[1.01]'
+                          : 'border-stone-300 hover:border-[#0f2d22] bg-stone-50/70 hover:bg-stone-50'
+                      }`}
+                    >
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                        onChange={handleMultipleGalleryUpload}
+                        disabled={uploadingImage}
+                      />
+
+                      <div className="space-y-2 pointer-events-none">
+                        <div className="w-14 h-14 rounded-2xl bg-[#84CC16]/20 text-[#0f2d22] flex items-center justify-center mx-auto shadow-sm">
+                          <CloudUpload className="w-7 h-7 text-[#0f2d22]" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-black text-stone-900">
+                            Nhấp để chọn hoặc kéo thả NHIỀU ẢNH cùng lúc vào đây
+                          </p>
+                          <p className="text-xs text-stone-500 mt-0.5">
+                            Hỗ trợ chọn cùng lúc nhiều file JPG, PNG, WEBP, GIF... Tất cả sẽ được tải lên Cloudinary.
+                          </p>
+                        </div>
+                        <div className="pt-1">
+                          <span className="inline-flex items-center gap-1 px-3 py-1 rounded-xl bg-[#0f2d22] text-white text-xs font-bold shadow-sm">
+                            <Plus className="w-3.5 h-3.5 text-[#84CC16]" />
+                            <span>Chọn nhiều file từ máy</span>
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Gallery Items Grid */}
+                    {(formData.gallery || []).length > 0 ? (
+                      <div className="space-y-2 pt-2">
+                        <div className="flex items-center justify-between text-xs text-stone-500 font-semibold">
+                          <span>Danh sách ảnh trong thư viện (Bấm ⭐ để chọn làm ảnh chính):</span>
+                          <button
+                            type="button"
+                            onClick={() => setFormData(prev => ({ ...prev, gallery: [] }))}
+                            className="text-rose-500 hover:underline text-[11px]"
+                          >
+                            Xoá tất cả
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-3">
+                          {formData.gallery.map((imgUrl, i) => {
+                            const isCloud = imgUrl.includes('cloudinary');
+                            const isPrimary = formData.image === imgUrl;
+
+                            return (
+                              <div
+                                key={i}
+                                className={`group relative aspect-square rounded-2xl border-2 overflow-hidden bg-stone-50 transition-all ${
+                                  isPrimary ? 'border-[#84CC16] shadow-md ring-2 ring-[#84CC16]/30' : 'border-stone-200 hover:border-stone-400'
+                                }`}
+                              >
+                                <img
+                                  src={imgUrl}
+                                  alt={`Gallery ${i + 1}`}
+                                  className="w-full h-full object-contain p-1"
+                                />
+
+                                {/* Cloudinary Tag */}
+                                {isCloud && (
+                                  <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-md bg-[#0f2d22]/80 backdrop-blur-xs text-[#84CC16] text-[9px] font-bold flex items-center gap-1">
+                                    <Cloud className="w-2.5 h-2.5" />
+                                    <span>Cloud</span>
+                                  </div>
+                                )}
+
+                                {/* Primary Tag */}
+                                {isPrimary && (
+                                  <div className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 rounded-md bg-[#84CC16] text-[#0f2d22] text-[9px] font-black shadow-xs">
+                                    Ảnh chính
+                                  </div>
+                                )}
+
+                                {/* Hover Action Overlay */}
+                                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 p-2">
+                                  {!isPrimary && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSetAsPrimaryImage(imgUrl)}
+                                      className="p-1.5 rounded-lg bg-[#84CC16] text-[#0f2d22] text-xs font-bold hover:scale-110 transition cursor-pointer"
+                                      title="Đặt làm ảnh chính"
+                                    >
+                                      <Star className="w-3.5 h-3.5 fill-current" />
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => setPreviewLightboxImg(imgUrl)}
+                                    className="p-1.5 rounded-lg bg-white text-stone-800 text-xs font-bold hover:scale-110 transition cursor-pointer"
+                                    title="Xem ảnh lớn"
+                                  >
+                                    <ZoomIn className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setFormData(prev => ({
+                                      ...prev,
+                                      gallery: prev.gallery.filter((_, idx) => idx !== i)
+                                    }))}
+                                    className="p-1.5 rounded-lg bg-rose-500 text-white text-xs font-bold hover:scale-110 transition cursor-pointer"
+                                    title="Xoá ảnh khỏi thư viện"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-4 rounded-xl bg-stone-50 border border-stone-200/60 text-center text-xs text-stone-400">
+                        Chưa có ảnh nào trong thư viện. Hãy kéo thả hoặc chọn nhiều ảnh ở trên để tải lên Cloudinary.
+                      </div>
+                    )}
+
+                  </div>
+
+                </div>
+              )}
+
+              {/* Submit / Cancel Buttons */}
+              <div className="pt-6 border-t border-stone-200 flex items-center justify-end gap-3">
                 <button
                   type="button"
                   onClick={() => setIsEditModalOpen(false)}
-                  className="px-5 py-2.5 rounded-xl border border-stone-300 text-stone-700 text-xs font-bold hover:bg-stone-100 transition cursor-pointer"
+                  className="px-5 py-2.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold cursor-pointer"
                 >
-                  Huỷ Bỏ
+                  Huỷ bỏ
                 </button>
                 <button
                   type="submit"
-                  disabled={saving || uploadingImage}
-                  className="px-6 py-2.5 rounded-xl bg-[#174C3C] hover:bg-[#205F4D] text-white text-xs font-bold shadow-md transition cursor-pointer flex items-center gap-2"
+                  disabled={saving}
+                  className="px-6 py-2.5 rounded-xl bg-[#84CC16] hover:bg-[#74B843] text-[#0f2d22] text-xs font-black shadow-md cursor-pointer flex items-center gap-1.5"
                 >
-                  {(saving || uploadingImage) && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
-                  <span>{editingProduct ? 'Lưu Thay Đổi Vào MongoDB' : 'Tạo Sản Phẩm & Lưu'}</span>
+                  {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  <span>{saving ? 'Đang lưu...' : (editingProduct ? 'Cập Nhật Sản Phẩm' : 'Tạo Sản Phẩm')}</span>
                 </button>
               </div>
 
             </form>
+
           </div>
         </div>
       )}
 
-      {/* ==================================================================== */}
-      {/* MODAL: Xác nhận Xoá */}
-      {/* ==================================================================== */}
+      {/* ======================================================== */}
+      {/* MODAL 2: QR CODE PREVIEW & DOWNLOAD */}
+      {/* ======================================================== */}
+      {isQrModalOpen && selectedQrProduct && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/75 backdrop-blur-sm">
+          <div className="relative w-full max-w-md bg-white rounded-3xl p-6 sm:p-8 shadow-2xl border border-stone-200 text-center space-y-4">
+            <button
+              onClick={() => setIsQrModalOpen(false)}
+              className="absolute top-4 right-4 p-2 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-600 transition cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="w-12 h-12 rounded-2xl bg-[#84CC16]/20 text-[#0f2d22] flex items-center justify-center mx-auto font-black">
+              <QrCode className="w-7 h-7" />
+            </div>
+
+            <h3 className="text-lg font-black text-stone-900">
+              Tem Mã QR: {selectedQrProduct.name}
+            </h3>
+            <p className="text-xs text-stone-500">
+              Mã xác thực: <strong className="font-mono text-[#0f2d22]">{selectedQrProduct.verificationCode}</strong>
+            </p>
+
+            {/* Generated QR Code Image */}
+            <div className="p-4 bg-stone-50 rounded-2xl border border-stone-200 inline-block shadow-inner">
+              <img
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(
+                  typeof window !== 'undefined'
+                    ? `${window.location.origin}/?code=${selectedQrProduct.verificationCode}`
+                    : `https://dntrace.com/?code=${selectedQrProduct.verificationCode}`
+                )}`}
+                alt="QR Code"
+                className="w-48 h-48 mx-auto"
+              />
+            </div>
+
+            <div className="pt-2 flex flex-col gap-2">
+              <a
+                href={`https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=${encodeURIComponent(
+                  typeof window !== 'undefined'
+                    ? `${window.location.origin}/?code=${selectedQrProduct.verificationCode}`
+                    : `https://dntrace.com/?code=${selectedQrProduct.verificationCode}`
+                )}`}
+                download={`QR_${selectedQrProduct.verificationCode}.png`}
+                target="_blank"
+                rel="noreferrer"
+                className="w-full py-3 rounded-xl bg-[#0f2d22] hover:bg-[#194535] text-white text-xs font-bold flex items-center justify-center gap-2 shadow transition"
+              >
+                <Download className="w-4 h-4 text-[#84CC16]" />
+                <span>Tải Ảnh Mã QR Độ Phân Giải Cao (PNG)</span>
+              </a>
+
+              <button
+                onClick={() => {
+                  const url = `${window.location.origin}/?code=${selectedQrProduct.verificationCode}`;
+                  navigator.clipboard.writeText(url);
+                  showToast('Đã sao chép link tra cứu!');
+                }}
+                className="w-full py-2.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold flex items-center justify-center gap-2 transition cursor-pointer"
+              >
+                <Copy className="w-4 h-4" />
+                <span>Sao Chép Link Tra Cứu</span>
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* MODAL 3: VIEW & MANAGE QR REGISTRATION REQUEST */}
+      {/* ======================================================== */}
+      {viewingRequest && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/75 backdrop-blur-sm">
+          <div className="relative w-full max-w-lg bg-white rounded-3xl p-6 sm:p-8 shadow-2xl border border-stone-200 space-y-5">
+            
+            <div className="flex items-center justify-between pb-3 border-b border-stone-100">
+              <div>
+                <span className="text-[10px] font-black uppercase text-[#84CC16] bg-[#0f2d22] px-2.5 py-0.5 rounded">
+                  Chi Tiết Đơn Đăng Ký
+                </span>
+                <h3 className="text-lg font-black text-stone-900 mt-1">
+                  {viewingRequest.productName}
+                </h3>
+              </div>
+              <button
+                onClick={() => setViewingRequest(null)}
+                className="p-1.5 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-600 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs text-stone-700">
+              <div className="p-3 rounded-xl bg-stone-50 border border-stone-200">
+                <span className="text-stone-500 block text-[10px] uppercase font-semibold">Tên đơn vị / Cơ sở sản xuất</span>
+                <strong className="text-sm text-stone-900 block mt-0.5">{viewingRequest.businessName}</strong>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3 rounded-xl bg-stone-50 border border-stone-200">
+                  <span className="text-stone-500 block text-[10px] uppercase font-semibold">Người liên hệ</span>
+                  <strong className="text-stone-900">{viewingRequest.name}</strong>
+                </div>
+                <div className="p-3 rounded-xl bg-stone-50 border border-stone-200">
+                  <span className="text-stone-500 block text-[10px] uppercase font-semibold">Số điện thoại</span>
+                  <a href={`tel:${viewingRequest.phone}`} className="font-bold text-[#0f2d22] hover:underline">
+                    {viewingRequest.phone}
+                  </a>
+                </div>
+              </div>
+
+              {viewingRequest.email && (
+                <div className="p-3 rounded-xl bg-stone-50 border border-stone-200">
+                  <span className="text-stone-500 block text-[10px] uppercase font-semibold">Email</span>
+                  <span className="text-stone-900">{viewingRequest.email}</span>
+                </div>
+              )}
+
+              {viewingRequest.address && (
+                <div className="p-3 rounded-xl bg-stone-50 border border-stone-200">
+                  <span className="text-stone-500 block text-[10px] uppercase font-semibold">Địa chỉ cơ sở</span>
+                  <span className="text-stone-900">{viewingRequest.address}</span>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3 rounded-xl bg-stone-50 border border-stone-200">
+                  <span className="text-stone-500 block text-[10px] uppercase font-semibold">Loại tem</span>
+                  <strong className="text-stone-900">{viewingRequest.qrType}</strong>
+                </div>
+                <div className="p-3 rounded-xl bg-stone-50 border border-stone-200">
+                  <span className="text-stone-500 block text-[10px] uppercase font-semibold">Số lượng dự kiến</span>
+                  <strong className="text-[#0f2d22] font-mono">{viewingRequest.quantity}</strong>
+                </div>
+              </div>
+
+              {viewingRequest.note && (
+                <div className="p-3 rounded-xl bg-stone-50 border border-stone-200">
+                  <span className="text-stone-500 block text-[10px] uppercase font-semibold">Ghi chú</span>
+                  <p className="text-stone-800 italic mt-0.5 whitespace-pre-line">{viewingRequest.note}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Change Status Buttons */}
+            <div className="pt-2 border-t border-stone-100">
+              <span className="text-[11px] font-bold text-stone-500 uppercase block mb-2">
+                Cập nhật trạng thái xử lý:
+              </span>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  onClick={() => handleUpdateStatus(viewingRequest._id, 'contacted')}
+                  className={`py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+                    viewingRequest.status === 'contacted' ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+                  }`}
+                >
+                  Đã liên hệ
+                </button>
+                <button
+                  onClick={() => handleUpdateStatus(viewingRequest._id, 'approved')}
+                  className={`py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+                    viewingRequest.status === 'approved' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                  }`}
+                >
+                  Đã duyệt cấp mã
+                </button>
+                <button
+                  onClick={() => handleUpdateStatus(viewingRequest._id, 'rejected')}
+                  className={`py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+                    viewingRequest.status === 'rejected' ? 'bg-rose-600 text-white' : 'bg-rose-50 text-rose-700 hover:bg-rose-100'
+                  }`}
+                >
+                  Từ chối
+                </button>
+              </div>
+            </div>
+
+            <div className="pt-2 flex items-center justify-end gap-2">
+              <button
+                onClick={() => handleConvertRequestToProduct(viewingRequest)}
+                className="w-full py-3 rounded-xl bg-[#84CC16] hover:bg-[#74B843] text-[#0f2d22] font-black text-xs uppercase tracking-wider shadow-md transition cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <Sparkles className="w-4 h-4" />
+                <span>⚡ Tạo Nhanh Sản Phẩm Từ Đơn Này</span>
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* MODAL 4: DELETE CONFIRMATION */}
+      {/* ======================================================== */}
       {isDeleteModalOpen && deletingProduct && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 max-w-md w-full border border-stone-200 shadow-2xl space-y-4">
-            <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
-              <AlertTriangle className="w-6 h-6" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/75 backdrop-blur-sm">
+          <div className="relative w-full max-w-md bg-white rounded-3xl p-6 sm:p-8 shadow-2xl border border-stone-200 text-center space-y-4">
+            <div className="w-14 h-14 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
+              <AlertTriangle className="w-8 h-8" />
             </div>
-            <div className="text-center">
-              <h3 className="text-base font-bold text-stone-900">Xác Nhận Xoá Sản Phẩm?</h3>
-              <p className="text-xs text-stone-500 mt-1">
-                Bạn có chắc chắn muốn xoá sản phẩm <strong>"{deletingProduct.name}"</strong>? Thao tác này sẽ xoá dữ liệu vĩnh viễn khỏi MongoDB.
-              </p>
-            </div>
-            <div className="flex items-center gap-3 pt-2">
+            <h3 className="text-lg font-black text-stone-900">
+              Xác Nhận Xoá Sản Phẩm?
+            </h3>
+            <p className="text-xs text-stone-600">
+              Bạn có chắc chắn muốn xoá sản phẩm <strong>"{deletingProduct.name}"</strong> (Mã: {deletingProduct.verificationCode}) khỏi hệ thống? Thao tác này không thể hoàn tác.
+            </p>
+            <div className="pt-2 flex items-center justify-center gap-3">
               <button
                 onClick={() => setIsDeleteModalOpen(false)}
-                className="flex-1 py-2.5 rounded-xl border border-stone-200 text-stone-700 text-xs font-bold hover:bg-stone-50 cursor-pointer"
+                className="px-5 py-2.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold cursor-pointer"
               >
-                Huỷ Bỏ
+                Huỷ bỏ
               </button>
               <button
-                onClick={handleConfirmDelete}
-                disabled={saving}
-                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md cursor-pointer"
+                onClick={handleDeleteProduct}
+                className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md cursor-pointer"
               >
-                {saving ? 'Đang xoá...' : 'Đồng Ý Xoá'}
+                Đồng Ý Xoá
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ==================================================================== */}
-      {/* MODAL: Hướng Dẫn Gắn Link MongoDB */}
-      {/* ==================================================================== */}
-      {isMongoGuideOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-xl w-full border border-stone-200 shadow-2xl space-y-5">
-            <div className="flex items-center justify-between pb-3 border-b border-stone-100">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center">
-                  <Database className="w-5 h-5" />
-                </div>
-                <h3 className="font-bold text-stone-900 text-base">
-                  Cấu Hình Kết Nối MongoDB
-                </h3>
-              </div>
-              <button
-                onClick={() => setIsMongoGuideOpen(false)}
-                className="p-1.5 rounded-lg text-stone-400 hover:text-stone-700 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-4 text-xs text-stone-700 leading-relaxed">
-              <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 space-y-2">
-                <span className="font-bold text-stone-900 block text-xs">
-                  Mở file <code className="bg-stone-200 px-1.5 py-0.5 rounded text-[#174C3C]">.env</code> trong thư mục dự án và dán link:
-                </span>
-                <pre className="p-3 rounded-xl bg-[#19241F] text-[#DFCA9B] font-mono text-[11px] overflow-x-auto">
-                  MONGODB_URI=mongodb+srv://&lt;username&gt;:&lt;password&gt;@cluster0.xxxxx.mongodb.net/vhh_db?retryWrites=true&amp;w=majority
-                </pre>
-              </div>
-            </div>
-
-            <div className="pt-2 text-right">
-              <button
-                onClick={() => setIsMongoGuideOpen(false)}
-                className="px-5 py-2.5 rounded-xl bg-[#174C3C] text-white text-xs font-bold hover:bg-[#205F4D] transition cursor-pointer"
-              >
-                Đóng
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ==================================================================== */}
-      {/* MODAL: Hướng Dẫn Cấu Hình Cloudinary */}
-      {/* ==================================================================== */}
-      {isCloudinaryGuideOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-xl w-full border border-stone-200 shadow-2xl space-y-5">
-            <div className="flex items-center justify-between pb-3 border-b border-stone-100">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-sky-600 text-white flex items-center justify-center">
-                  <Cloud className="w-5 h-5" />
-                </div>
-                <h3 className="font-bold text-stone-900 text-base">
-                  Cấu Hình Lưu Trữ Hình Ảnh Cloudinary
-                </h3>
-              </div>
-              <button
-                onClick={() => setIsCloudinaryGuideOpen(false)}
-                className="p-1.5 rounded-lg text-stone-400 hover:text-stone-700 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-4 text-xs text-stone-700 leading-relaxed">
-              <p>
-                Để ảnh sản phẩm được lưu tự động trên mây Cloudinary với CDN tốc độ cao, bạn chỉ cần điền 3 thông số vào file <code>.env</code>:
-              </p>
-
-              <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 space-y-2">
-                <span className="font-bold text-stone-900 block text-xs">
-                  Mở file <code>.env</code> và điền:
-                </span>
-                <pre className="p-3 rounded-xl bg-[#19241F] text-sky-400 font-mono text-[11px] overflow-x-auto">
-                  {`CLOUDINARY_CLOUD_NAME=your_cloud_name
-CLOUDINARY_API_KEY=your_api_key
-CLOUDINARY_API_SECRET=your_api_secret`}
-                </pre>
-                <p className="text-[11px] text-stone-500">
-                  Lấy các thông số trên miễn phí tại trang Dashboard: <a href="https://cloudinary.com" target="_blank" rel="noreferrer" className="text-sky-600 underline">cloudinary.com</a>
-                </p>
-              </div>
-
-              <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px]">
-                💡 <strong>Tiện lợi:</strong> Ngay sau khi điền, mọi ảnh bạn bấm "Tải ảnh từ máy tính" sẽ được server tự động upload lên Cloudinary và sinh ra link trực tiếp!
-              </div>
-            </div>
-
-            <div className="pt-2 text-right">
-              <button
-                onClick={() => setIsCloudinaryGuideOpen(false)}
-                className="px-5 py-2.5 rounded-xl bg-[#174C3C] text-white text-xs font-bold hover:bg-[#205F4D] transition cursor-pointer"
-              >
-                Đã Hiểu &bull; Đóng
-              </button>
-            </div>
-          </div>
+      {/* Lightbox Preview Modal */}
+      {previewLightboxImg && (
+        <div
+          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setPreviewLightboxImg(null)}
+        >
+          <button
+            onClick={() => setPreviewLightboxImg(null)}
+            className="absolute top-5 right-5 p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition cursor-pointer"
+          >
+            <X className="w-6 h-6" />
+          </button>
+          <img
+            src={previewLightboxImg}
+            alt="Xem ảnh lớn"
+            className="max-h-[90vh] max-w-[90vw] object-contain rounded-2xl shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
         </div>
       )}
 

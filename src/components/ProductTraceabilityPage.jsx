@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import {
-  ArrowLeft,
   ShieldCheck,
   QrCode,
   CheckCircle2,
@@ -20,24 +19,37 @@ import {
   Heart,
   Settings,
   RefreshCw,
-  ChevronDown
+  ChevronDown,
+  Printer,
+  FileText,
+  Eye,
+  Info,
+  Clock,
+  BookOpen,
+  Wheat,
+  Image as ImageIcon,
+  Compass,
+  AlertTriangle,
+  ZoomIn,
+  X
 } from 'lucide-react';
 import { fetchProducts, fetchProductById } from '../services/api';
 
 export default function ProductTraceabilityPage({
-  onBackToHome,
-  onOpenConsultation,
-  onNavigateToAdmin,
-  selectedProductId
+  selectedProductId,
+  onOpenQrRegister,
+  onNavigateToAdmin
 }) {
   const [copied, setCopied] = useState(false);
-  const [activeTab, setActiveTab] = useState('info');
+  const [activeTab, setActiveTab] = useState('all'); // 'all', 'specs', 'story', 'raw', 'map', 'gallery'
+  const [viewMode, setViewMode] = useState('modern'); // 'modern' or 'document'
   const [loading, setLoading] = useState(true);
   const [productData, setProductData] = useState(null);
   const [allProducts, setAllProducts] = useState([]);
   const [showProductDropdown, setShowProductDropdown] = useState(false);
+  const [lightboxImg, setLightboxImg] = useState(null);
 
-  // Load product data from API / MongoDB
+  // Load product data from API
   const loadProduct = async (idOrCode) => {
     setLoading(true);
     try {
@@ -46,17 +58,19 @@ export default function ProductTraceabilityPage({
         idOrCode ? fetchProductById(idOrCode) : null
       ]);
 
-      setAllProducts(prodsRes.data || []);
+      const list = prodsRes.data || [];
+      setAllProducts(list);
 
       if (currentRes && currentRes.data) {
         setProductData(currentRes.data);
-      } else if (prodsRes.data && prodsRes.data.length > 0) {
-        // If a specific ID was requested, find it
+      } else if (list.length > 0) {
         if (idOrCode) {
-          const matched = prodsRes.data.find(p => p._id === idOrCode || p.verificationCode === idOrCode);
-          setProductData(matched || prodsRes.data[0]);
+          const matched = list.find(p => p._id === idOrCode || p.verificationCode === idOrCode);
+          setProductData(matched || list[0]);
         } else {
-          setProductData(prodsRes.data[0]);
+          // Priority to default product (Kẹo dừa dẻo Ngọc Hải)
+          const defaultProd = list.find(p => p.isDefault) || list[0];
+          setProductData(defaultProd);
         }
       }
     } catch (err) {
@@ -70,47 +84,42 @@ export default function ProductTraceabilityPage({
     loadProduct(selectedProductId);
   }, [selectedProductId]);
 
-  const handleCopy = () => {
+  const handleCopyLink = () => {
     navigator.clipboard.writeText(window.location.href);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handlePrint = () => {
+    window.print();
+  };
+
   if (loading && !productData) {
     return (
-      <div className="bg-[#F8F7F3] min-h-screen py-24 flex items-center justify-center">
+      <div className="bg-[#F8F7F3] min-h-[70vh] flex items-center justify-center">
         <div className="text-center space-y-4">
-          <RefreshCw className="w-10 h-10 text-[#174C3C] animate-spin mx-auto" />
-          <p className="text-sm font-bold text-stone-700">Đang truy xuất thông tin tem điện tử VCheck từ MongoDB...</p>
+          <RefreshCw className="w-10 h-10 text-[#0f2d22] animate-spin mx-auto" />
+          <p className="text-sm font-semibold text-stone-600">Đang đồng bộ dữ liệu truy xuất dntrace.com...</p>
         </div>
       </div>
     );
   }
 
-  // Fallback if no product found
   if (!productData) {
     return (
-      <div className="bg-[#F8F7F3] min-h-screen py-16">
-        <div className="max-w-xl mx-auto px-4 text-center space-y-4 bg-white p-8 rounded-3xl border border-stone-200">
+      <div className="bg-[#F8F7F3] min-h-[70vh] py-16 flex items-center justify-center">
+        <div className="max-w-xl mx-auto px-4 text-center space-y-4 bg-white p-8 rounded-3xl border border-stone-200 shadow-sm">
           <AlertCircle className="w-12 h-12 text-amber-500 mx-auto" />
           <h2 className="text-xl font-bold text-stone-900">Không tìm thấy thông tin sản phẩm</h2>
           <p className="text-xs text-stone-600">
-            Cơ sở dữ liệu MongoDB hiện chưa có dữ liệu hoặc mã tra cứu không hợp lệ.
+            Hệ thống dntrace.com chưa tìm thấy mã tra cứu hợp lệ trong cơ sở dữ liệu.
           </p>
           <div className="pt-2 flex justify-center gap-3">
-            {/* {onNavigateToAdmin && (
-              <button
-                onClick={onNavigateToAdmin}
-                className="px-4 py-2 rounded-xl bg-[#174C3C] text-white text-xs font-bold hover:bg-[#205F4D]"
-              >
-                Vào Trang Quản Lý Sản Phẩm
-              </button>
-            )} */}
             <button
               onClick={() => loadProduct()}
-              className="px-4 py-2 rounded-xl bg-stone-100 text-stone-700 text-xs font-bold hover:bg-stone-200"
+              className="px-4 py-2 rounded-xl bg-[#0f2d22] text-white text-xs font-bold hover:bg-[#194535] cursor-pointer"
             >
-              Thử lại
+              Tải lại trang
             </button>
           </div>
         </div>
@@ -118,469 +127,842 @@ export default function ProductTraceabilityPage({
     );
   }
 
+  // Combine & guarantee rich gallery images (always multiple photos)
+  const rawList = [
+    ...(productData.image ? [productData.image] : []),
+    ...(Array.isArray(productData.gallery) ? productData.gallery : [])
+  ];
+  const uniqueImages = Array.from(new Set(rawList.filter(Boolean)));
+  const defaultSupplementImages = [
+    '/assets/ocop_products.jpg',
+    '/assets/qr_traceability.jpg',
+    '/assets/dntrace_logo.jpg'
+  ];
+  const galleryImages = uniqueImages.length >= 3
+    ? uniqueImages
+    : Array.from(new Set([...uniqueImages, ...defaultSupplementImages]));
+
   return (
-    <div className="bg-[#F8F7F3] min-h-screen py-8">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
+    <div className="bg-[#F8F7F3] min-h-screen py-6 sm:py-8">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
 
-        {/* Navigation Breadcrumb Bar & Quick Admin Link */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-stone-200">
-          <div className="flex items-center gap-3">
-            {onBackToHome && (
+        {/* Top Utility & Switcher Bar */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pb-3 border-b border-stone-200">
+          
+          {/* Product Switcher Dropdown */}
+          <div className="flex items-center gap-2">
+            <div className="relative inline-block">
               <button
-                onClick={onBackToHome}
-                className="inline-flex items-center gap-2 text-xs sm:text-sm font-semibold text-[#174C3C] hover:text-[#205F4D] px-3.5 py-2 rounded-xl bg-white border border-stone-200 shadow-sm transition-all hover:-translate-x-0.5 cursor-pointer"
+                onClick={() => setShowProductDropdown(!showProductDropdown)}
+                className="inline-flex items-center gap-2 text-xs font-bold text-stone-800 px-3.5 py-2 rounded-xl bg-white border border-stone-200 shadow-sm hover:border-[#0f2d22] transition cursor-pointer"
               >
-                <ArrowLeft className="w-4 h-4" />
-                <span>Trang chủ</span>
+                <QrCode className="w-4 h-4 text-[#84CC16]" />
+                <span className="truncate max-w-[200px] sm:max-w-xs">{productData.name}</span>
+                <ChevronDown className="w-3.5 h-3.5 text-stone-400" />
               </button>
-            )}
 
-            {/* Product Switcher Dropdown */}
-            {allProducts.length > 1 && (
-              <div className="relative">
-                <button
-                  onClick={() => setShowProductDropdown(!showProductDropdown)}
-                  className="inline-flex items-center gap-2 text-xs font-bold text-stone-700 px-3 py-2 rounded-xl bg-white border border-stone-200 shadow-sm hover:border-[#174C3C] cursor-pointer"
-                >
-                  <span className="truncate max-w-[160px] sm:max-w-xs">{productData.name}</span>
-                  <ChevronDown className="w-3.5 h-3.5 text-stone-400" />
-                </button>
-
-                {showProductDropdown && (
-                  <div className="absolute left-0 mt-2 w-72 bg-white rounded-2xl shadow-xl border border-stone-200 p-2 z-30">
-                    <div className="text-[10px] font-bold text-stone-400 px-3 py-1.5 uppercase">
-                      Chọn sản phẩm để tra cứu ({allProducts.length})
-                    </div>
-                    {allProducts.map((p) => (
-                      <button
-                        key={p._id || p.verificationCode}
-                        onClick={() => {
-                          setProductData(p);
-                          setShowProductDropdown(false);
-                        }}
-                        className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition cursor-pointer ${p.verificationCode === productData.verificationCode
-                          ? 'bg-[#174C3C]/10 text-[#174C3C] font-bold'
-                          : 'hover:bg-stone-100 text-stone-700'
-                          }`}
-                      >
-                        <span className="truncate pr-2">{p.name}</span>
-                        {p.verificationCode === productData.verificationCode && (
-                          <Check className="w-3.5 h-3.5 text-[#174C3C] shrink-0" />
-                        )}
-                      </button>
-                    ))}
+              {showProductDropdown && (
+                <div className="absolute left-0 mt-2 w-80 bg-white rounded-2xl shadow-xl border border-stone-200 p-2 z-30">
+                  <div className="text-[10px] font-bold text-stone-400 px-3 py-1.5 uppercase">
+                    Chọn sản phẩm tra cứu ({allProducts.length})
                   </div>
-                )}
-              </div>
+                  {allProducts.map((p) => (
+                    <button
+                      key={p._id || p.verificationCode}
+                      onClick={() => {
+                        setProductData(p);
+                        setShowProductDropdown(false);
+                      }}
+                      className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition cursor-pointer ${
+                        p.verificationCode === productData.verificationCode
+                          ? 'bg-[#0f2d22]/10 text-[#0f2d22] font-bold'
+                          : 'hover:bg-stone-100 text-stone-700'
+                      }`}
+                    >
+                      <span className="truncate pr-2">{p.name}</span>
+                      {p.verificationCode === productData.verificationCode && (
+                        <Check className="w-3.5 h-3.5 text-[#0f2d22] shrink-0" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <span className="hidden md:inline-flex items-center text-xs text-stone-500 font-medium">
+              Mã: <span className="font-mono font-bold text-stone-700 ml-1">{productData.verificationCode}</span>
+            </span>
+          </div>
+
+          {/* Action Toolbar */}
+          <div className="flex items-center justify-end gap-2 flex-wrap">
+            {/* View Mode Toggle */}
+            <div className="flex items-center bg-stone-200/70 p-1 rounded-xl text-xs font-semibold">
+              <button
+                onClick={() => setViewMode('modern')}
+                className={`px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
+                  viewMode === 'modern' ? 'bg-white text-[#0f2d22] shadow-sm font-bold' : 'text-stone-600 hover:text-stone-900'
+                }`}
+              >
+                <Eye className="w-3.5 h-3.5" />
+                <span>Giao diện số</span>
+              </button>
+              <button
+                onClick={() => setViewMode('document')}
+                className={`px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
+                  viewMode === 'document' ? 'bg-white text-[#0f2d22] shadow-sm font-bold' : 'text-stone-600 hover:text-stone-900'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Bản công bố</span>
+              </button>
+            </div>
+
+            <button
+              onClick={handlePrint}
+              className="p-2 sm:px-3 sm:py-1.5 rounded-xl bg-white border border-stone-200 hover:bg-stone-50 text-stone-700 text-xs font-semibold shadow-sm transition cursor-pointer flex items-center gap-1.5"
+              title="In bản tra cứu"
+            >
+              <Printer className="w-3.5 h-3.5 text-stone-500" />
+              <span className="hidden sm:inline">In hồ sơ</span>
+            </button>
+
+            <button
+              onClick={handleCopyLink}
+              className="p-2 sm:px-3 sm:py-1.5 rounded-xl bg-white border border-stone-200 hover:bg-stone-50 text-stone-700 text-xs font-semibold shadow-sm transition cursor-pointer flex items-center gap-1.5"
+              title="Sao chép link chia sẻ"
+            >
+              {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Share2 className="w-3.5 h-3.5 text-stone-500" />}
+              <span className="hidden sm:inline">{copied ? 'Đã sao chép' : 'Chia sẻ'}</span>
+            </button>
+
+            {onOpenQrRegister && (
+              <button
+                onClick={onOpenQrRegister}
+                className="px-3 py-1.5 rounded-xl bg-[#84CC16] hover:bg-[#74B843] text-[#0f2d22] text-xs font-bold shadow transition cursor-pointer flex items-center gap-1.5"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Cấp tem QR</span>
+              </button>
             )}
           </div>
 
-          {/* <div className="flex items-center gap-3">
-            {onNavigateToAdmin && (
-              <button
-                onClick={onNavigateToAdmin}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-stone-200 text-stone-700 hover:text-[#174C3C] text-xs font-bold shadow-sm hover:shadow transition cursor-pointer"
-              >
-                <Settings className="w-3.5 h-3.5 text-[#174C3C]" />
-                <span>Quản Lý Sản Phẩm (Admin)</span>
-              </button>
-            )}
-
-            <div className="hidden md:flex items-center gap-2 text-xs text-stone-500">
-              <span>Cổng VCheck</span>
-              <span>/</span>
-              <span className="text-stone-700 truncate max-w-xs font-medium">{productData.name}</span>
-            </div>
-          </div> */}
         </div>
 
         {/* Verification Success Hero Banner */}
-        <div className="rounded-3xl bg-gradient-to-r from-[#174C3C] via-[#1E5D4A] to-[#174C3C] text-white p-6 sm:p-8 shadow-xl relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-80 h-80 bg-white/5 rounded-full blur-3xl pointer-events-none" />
+        <div className="rounded-3xl bg-gradient-to-r from-[#0f2d22] via-[#164332] to-[#0f2d22] text-white p-6 sm:p-8 shadow-xl relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-96 h-96 bg-[#84CC16]/10 rounded-full blur-3xl pointer-events-none" />
 
           <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
             <div className="space-y-3">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#DFCA9B] text-[#174C3C] text-xs font-bold uppercase tracking-wider">
-                <ShieldCheck className="w-4 h-4" />
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#84CC16] text-[#0f2d22] text-xs font-black uppercase tracking-wider shadow-sm">
+                <ShieldCheck className="w-4 h-4 text-[#0f2d22]" />
                 <span>{productData.status || 'ĐÃ XÁC THỰC THÀNH CÔNG'}</span>
               </div>
               <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight text-white">
                 {productData.name}
               </h1>
               <p className="text-xs sm:text-sm text-stone-200 max-w-2xl leading-relaxed">
-                Dữ liệu tem điện tử chính hãng được đồng bộ trực tiếp từ Cổng thông tin truy xuất nguồn gốc (
-                <a
-                  href="https://vcheck.com.vn"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-[#DFCA9B] underline hover:text-white"
-                >
-                  vcheck.com.vn
-                </a>
-                ). Giải pháp công nghệ do <strong>{productData.provider || 'Công ty TNHH MTV Vạn Phúc Hoa'}</strong> cung cấp.
+                Dữ liệu tem điện tử chính hãng được xác thực trên Hệ thống truy xuất nguồn gốc số{' '}
+                <strong className="text-[#84CC16]">dntrace.com</strong>. Minh bạch toàn diện thông tin sản phẩm, cơ sở sản xuất và chuỗi cung ứng.
               </p>
             </div>
 
             <div className="bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/20 text-center shrink-0 w-full sm:w-auto">
-              <div className="w-12 h-12 rounded-xl bg-white text-[#174C3C] flex items-center justify-center mx-auto mb-2 shadow-md">
-                <QrCode className="w-7 h-7" />
+              <div className="w-12 h-12 rounded-xl bg-white text-[#0f2d22] flex items-center justify-center mx-auto mb-2 shadow-md">
+                <QrCode className="w-7 h-7 text-[#0f2d22]" />
               </div>
-              <p className="text-[10px] text-stone-200 uppercase font-semibold">Mã định danh VCheck</p>
-              <p className="font-mono text-xs font-bold text-[#DFCA9B] mt-0.5">{productData.verificationCode}</p>
+              <p className="text-[10px] text-stone-200 uppercase font-semibold">Mã định danh dntrace</p>
+              <p className="font-mono text-xs font-bold text-[#84CC16] mt-0.5">{productData.verificationCode}</p>
             </div>
           </div>
         </div>
 
-        {/* Main Content Grid: Left Product Visual + Right Key Info */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        {/* VIEW MODE 1: DOCUMENT / SPEC SHEET VIEW (Exactly like Image 1) */}
+        {viewMode === 'document' && (
+          <div className="bg-white rounded-3xl p-6 sm:p-10 border border-stone-200 shadow-sm space-y-8 print:p-0 print:border-none print:shadow-none">
+            
+            {/* Document Header */}
+            <div className="text-center pb-6 border-b-2 border-stone-800 space-y-2">
+              <p className="text-[11px] font-bold text-stone-500 uppercase tracking-widest">
+                HỆ THỐNG TRUY XUẤT NGUỒN GỐC SỐ DNTRACE.COM
+              </p>
+              <h2 className="text-2xl sm:text-3xl font-black text-stone-900 tracking-tight uppercase">
+                BẢN THÔNG TIN CÔNG BỐ SẢN PHẨM
+              </h2>
+              <p className="text-xs text-stone-500 font-mono">
+                MÃ TRA CỨU: {productData.verificationCode} &bull; NGÀY ĐỒNG BỘ: {new Date().toLocaleDateString('vi-VN')}
+              </p>
+            </div>
 
-          {/* Left Column: Product Showcase Photo & Producer Details */}
-          <div className="lg:col-span-5 space-y-6">
-
-            {/* Real Product Packaging Image */}
-            <div className="bg-white rounded-3xl p-6 border border-stone-200 shadow-sm relative group overflow-hidden">
-              <div className="relative aspect-square rounded-2xl overflow-hidden bg-stone-50 flex items-center justify-center">
-                <img
-                  src={productData.image || '/assets/ngu_coc_huongfarm.jpg'}
-                  alt={productData.name}
-                  className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-500"
-                />
-              </div>
-
-              {/* VCheck Brand Banner Badge */}
-              <div className="mt-4 pt-4 border-t border-stone-100 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                  <span className="text-xs font-bold text-stone-700">Tem chính hãng VCheck</span>
-                </div>
-                <button
-                  onClick={handleCopy}
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#174C3C] hover:text-[#205F4D] px-2.5 py-1 rounded-lg bg-stone-100 hover:bg-stone-200 transition-colors cursor-pointer"
-                >
-                  {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copied ? 'Đã sao chép' : 'Chia sẻ mã'}</span>
-                </button>
+            {/* PHẦN 1: THÔNG TIN SẢN PHẨM */}
+            <div className="space-y-4">
+              <h3 className="text-base sm:text-lg font-black text-stone-900 uppercase tracking-wide border-l-4 border-[#0f2d22] pl-3">
+                THÔNG TIN SẢN PHẨM
+              </h3>
+              
+              <div className="overflow-hidden border border-stone-200 rounded-2xl">
+                <table className="w-full text-xs sm:text-sm text-left">
+                  <tbody className="divide-y divide-stone-100">
+                    <tr className="bg-stone-50/70">
+                      <td className="py-3 px-4 font-bold text-stone-800 w-1/3 sm:w-1/4">Tên sản phẩm</td>
+                      <td className="py-3 px-4 font-bold text-stone-900 text-base">{productData.name}</td>
+                    </tr>
+                    <tr>
+                      <td className="py-3 px-4 font-bold text-stone-800 align-top">Thành phần</td>
+                      <td className="py-3 px-4 text-stone-800 whitespace-pre-line leading-relaxed">{productData.ingredients || 'Đang cập nhật'}</td>
+                    </tr>
+                    <tr className="bg-stone-50/70">
+                      <td className="py-3 px-4 font-bold text-stone-800">Số TCBSP</td>
+                      <td className="py-3 px-4 font-mono font-bold text-stone-900">{productData.tcbsp || 'Đang cập nhật'}</td>
+                    </tr>
+                    <tr>
+                      <td className="py-3 px-4 font-bold text-stone-800">Số Tiêu chuẩn</td>
+                      <td className="py-3 px-4 text-stone-800">{productData.standardCode || '—'}</td>
+                    </tr>
+                    <tr className="bg-stone-50/70">
+                      <td className="py-3 px-4 font-bold text-stone-800">Ngày sản xuất</td>
+                      <td className="py-3 px-4 text-stone-800 font-medium">{productData.manufactureDate || 'Xem trên bao bì'}</td>
+                    </tr>
+                    <tr>
+                      <td className="py-3 px-4 font-bold text-stone-800">Thời hạn sử dụng</td>
+                      <td className="py-3 px-4 text-stone-800 font-medium">{productData.expiry || 'đang cập nhật'}</td>
+                    </tr>
+                    <tr className="bg-stone-50/70">
+                      <td className="py-3 px-4 font-bold text-stone-800">Khối lượng tịnh</td>
+                      <td className="py-3 px-4 text-stone-800 font-medium">{productData.netWeight || 'đang cập nhật'}</td>
+                    </tr>
+                    <tr>
+                      <td className="py-3 px-4 font-bold text-stone-800 align-top">Hướng dẫn sử dụng</td>
+                      <td className="py-3 px-4 text-stone-800 whitespace-pre-line leading-relaxed">{productData.usageGuide || 'xem chi tiết trên bao bì'}</td>
+                    </tr>
+                    <tr className="bg-stone-50/70">
+                      <td className="py-3 px-4 font-bold text-stone-800 align-top">Bảo quản</td>
+                      <td className="py-3 px-4 text-stone-800 whitespace-pre-line leading-relaxed">{productData.storageGuide || 'Bảo quản ở nơi khô ráo thoáng mát tránh ánh nắng trực tiếp'}</td>
+                    </tr>
+                    <tr>
+                      <td className="py-3 px-4 font-bold text-stone-800">Cảnh báo</td>
+                      <td className="py-3 px-4 text-stone-800">{productData.warning || '—'}</td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
             </div>
 
-            {/* Manufacturer Card */}
-            {productData.manufacturer && (
-              <div className="bg-white rounded-3xl p-6 border border-stone-200 shadow-sm space-y-4">
-                <div className="flex items-center gap-2 pb-3 border-b border-stone-100">
-                  <div className="w-8 h-8 rounded-lg bg-[#174C3C]/10 text-[#174C3C] flex items-center justify-center">
-                    <ShieldCheck className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-[#19241F] text-sm leading-tight">
-                      Thông Tin Cơ Sở Sản Xuất
-                    </h3>
-                    <p className="text-[10px] text-stone-500">Đơn vị chủ quản sản phẩm</p>
-                  </div>
-                </div>
+            {/* PHẦN 2: THÔNG TIN ĐƠN VỊ/ NHÀ SẢN XUẤT */}
+            <div className="space-y-4 pt-4 border-t border-stone-200">
+              <h3 className="text-base sm:text-lg font-black text-stone-900 uppercase tracking-wide border-l-4 border-[#0f2d22] pl-3">
+                THÔNG TIN ĐƠN VỊ/ NHÀ SẢN XUẤT
+              </h3>
 
-                <div className="space-y-3 text-xs text-stone-700">
-                  <div>
-                    <span className="text-stone-500 block text-[11px]">Tên đơn vị sản xuất:</span>
-                    <span className="font-bold text-stone-900 text-sm">{productData.manufacturer.name || 'Đang cập nhật'}</span>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <span className="text-stone-500 block text-[11px]">Số ĐKKD:</span>
-                      <span className="font-mono font-semibold text-stone-900">{productData.manufacturer.businessId || 'Chưa có'}</span>
-                    </div>
-                    <div>
-                      <span className="text-stone-500 block text-[11px]">Quốc gia:</span>
-                      <span className="font-semibold text-stone-900">{productData.manufacturer.country || 'Việt Nam'}</span>
-                    </div>
-                  </div>
-
-                  {productData.manufacturer.address && (
-                    <div className="flex items-start gap-2 pt-1">
-                      <MapPin className="w-4 h-4 text-[#174C3C] shrink-0 mt-0.5" />
-                      <span>{productData.manufacturer.address}</span>
-                    </div>
-                  )}
-
-                  {productData.manufacturer.phone && (
-                    <div className="flex items-center gap-2 pt-1">
-                      <Phone className="w-4 h-4 text-[#174C3C] shrink-0" />
-                      <a
-                        href={`tel:${productData.manufacturer.phone.replace(/\s+/g, '')}`}
-                        className="font-bold text-[#174C3C] hover:underline"
-                      >
-                        {productData.manufacturer.phone} (Bấm để gọi đặt hàng)
-                      </a>
-                    </div>
-                  )}
-
-                  {productData.manufacturer.website && (
-                    <div className="flex items-center gap-2 pt-1">
-                      <Globe className="w-4 h-4 text-[#174C3C] shrink-0" />
-                      <a
-                        href={productData.manufacturer.website.startsWith('http') ? productData.manufacturer.website : `http://${productData.manufacturer.website}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-[#174C3C] font-semibold hover:underline flex items-center gap-1"
-                      >
-                        <span>{productData.manufacturer.website}</span>
-                        <ExternalLink className="w-3 h-3" />
-                      </a>
-                    </div>
-                  )}
-                </div>
-
-                {productData.manufacturer.phone && (
-                  <div className="pt-2">
-                    <a
-                      href={`tel:${productData.manufacturer.phone.replace(/\s+/g, '')}`}
-                      className="w-full py-3 rounded-xl bg-[#174C3C] hover:bg-[#205F4D] text-white text-xs font-bold flex items-center justify-center gap-2 shadow-md transition-all"
-                    >
-                      <Phone className="w-4 h-4 text-[#DFCA9B]" />
-                      <span>Liên Hệ Đặt Hàng: {productData.manufacturer.phone}</span>
-                    </a>
-                  </div>
-                )}
+              <div className="overflow-hidden border border-stone-200 rounded-2xl">
+                <table className="w-full text-xs sm:text-sm text-left">
+                  <tbody className="divide-y divide-stone-100">
+                    <tr className="bg-stone-50/70">
+                      <td className="py-3 px-4 font-bold text-stone-800 w-1/3 sm:w-1/4">Tên đơn vị:</td>
+                      <td className="py-3 px-4 font-bold text-stone-900 text-base">{productData.manufacturer?.name || 'Đang cập nhật'}</td>
+                    </tr>
+                    <tr>
+                      <td className="py-3 px-4 font-bold text-stone-800">Quốc gia:</td>
+                      <td className="py-3 px-4 text-stone-800">{productData.manufacturer?.country || 'Việt Nam'}</td>
+                    </tr>
+                    <tr className="bg-stone-50/70">
+                      <td className="py-3 px-4 font-bold text-stone-800">Số XNCK ATTP</td>
+                      <td className="py-3 px-4 font-mono font-bold text-stone-900">{productData.manufacturer?.attpCode || '11/XNCK-KTHT'}</td>
+                    </tr>
+                    <tr>
+                      <td className="py-3 px-4 font-bold text-stone-800">Địa chỉ liên lạc:</td>
+                      <td className="py-3 px-4 text-stone-800">{productData.manufacturer?.address || 'Đang cập nhật'}</td>
+                    </tr>
+                    <tr className="bg-stone-50/70">
+                      <td className="py-3 px-4 font-bold text-stone-800">Số đăng ký kinh doanh</td>
+                      <td className="py-3 px-4 font-mono font-bold text-stone-900">{productData.manufacturer?.businessId || '049189001652'}</td>
+                    </tr>
+                    <tr>
+                      <td className="py-3 px-4 font-bold text-stone-800">Di động:</td>
+                      <td className="py-3 px-4 font-mono font-bold text-[#0f2d22]">
+                        <a href={`tel:${(productData.manufacturer?.phone || '').replace(/\s+/g, '')}`} className="hover:underline">
+                          {productData.manufacturer?.phone || '0982.101.377'}
+                        </a>
+                      </td>
+                    </tr>
+                    <tr className="bg-stone-50/70">
+                      <td className="py-3 px-4 font-bold text-stone-800">Website:</td>
+                      <td className="py-3 px-4">
+                        {productData.manufacturer?.website ? (
+                          <a
+                            href={productData.manufacturer.website.startsWith('http') ? productData.manufacturer.website : `http://${productData.manufacturer.website}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-[#0f2d22] font-semibold hover:underline"
+                          >
+                            {productData.manufacturer.website}
+                          </a>
+                        ) : '—'}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
-            )}
-
-          </div>
-
-          {/* Right Column: Detailed Traceability Tables & Quality Certifications */}
-          <div className="lg:col-span-7 space-y-6">
-
-            {/* Tabs for Navigation */}
-            <div className="flex items-center gap-2 p-1.5 rounded-2xl bg-stone-200/60 border border-stone-200">
-              <button
-                onClick={() => setActiveTab('info')}
-                className={`flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${activeTab === 'info'
-                  ? 'bg-white text-[#174C3C] shadow-sm'
-                  : 'text-stone-600 hover:text-stone-900'
-                  }`}
-              >
-                Thông Tin &amp; Thành Phần
-              </button>
-              <button
-                onClick={() => setActiveTab('standards')}
-                className={`flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${activeTab === 'standards'
-                  ? 'bg-white text-[#174C3C] shadow-sm'
-                  : 'text-stone-600 hover:text-stone-900'
-                  }`}
-              >
-                Hồ Sơ Tiêu Chuẩn &amp; ATTP
-                {/* Hồ Sơ Tiêu Chuẩn &amp; ATTP ({productData.standards?.length || 0}) */}
-              </button>
-              <button
-                onClick={() => setActiveTab('map')}
-                className={`flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${activeTab === 'map'
-                  ? 'bg-white text-[#174C3C] shadow-sm'
-                  : 'text-stone-600 hover:text-stone-900'
-                  }`}
-              >
-                Bản Đồ Nơi Sản Xuất
-              </button>
             </div>
 
-            {/* Tab 1: Product Specifications & Ingredients */}
-            {activeTab === 'info' && (
-              <div className="bg-white rounded-3xl p-6 sm:p-8 border border-stone-200 shadow-sm space-y-6">
-
-                <div className="border-b border-stone-100 pb-4">
-                  <span className="text-xs font-bold uppercase tracking-wider text-[#174C3C]">
-                    Hạng Mục 01 &bull; Thông Tin Chi Tiết
-                  </span>
-                  <h2 className="text-xl font-bold text-[#19241F] mt-1">
-                    Quy Cách &amp; Thành Phần Sản Phẩm
-                  </h2>
-                </div>
-
-                {/* Ingredients box */}
-                {productData.ingredients && (
-                  <div className="p-5 rounded-2xl bg-[#F8F7F3] border border-stone-200/80 space-y-2">
-                    <div className="flex items-center gap-2 text-xs font-bold text-[#174C3C]">
-                      <Sparkles className="w-4 h-4 text-[#C7A66A]" />
-                      <span>Thành phần công thức tự nhiên:</span>
-                    </div>
-                    <p className="text-xs sm:text-sm text-stone-800 leading-relaxed font-medium whitespace-pre-line">
-                      {productData.ingredients}
-                    </p>
-                  </div>
-                )}
-
-                {/* Specs Table */}
-                <div className="overflow-hidden rounded-2xl border border-stone-200">
-                  <table className="w-full text-left text-xs sm:text-sm">
-                    <tbody className="divide-y divide-stone-100">
-                      <tr className="bg-stone-50/50">
-                        <td className="py-3 px-4 font-bold text-stone-600 w-1/3">Khối lượng tịnh</td>
-                        <td className="py-3 px-4 font-semibold text-stone-900">{productData.netWeight || 'Đang cập nhật'}</td>
-                      </tr>
-                      <tr>
-                        <td className="py-3 px-4 font-bold text-stone-600">Thời hạn sử dụng</td>
-                        <td className="py-3 px-4 font-semibold text-stone-900">{productData.expiry || 'Đang cập nhật'}</td>
-                      </tr>
-                      <tr className="bg-stone-50/50">
-                        <td className="py-3 px-4 font-bold text-stone-600">Ngày sản xuất</td>
-                        <td className="py-3 px-4 font-semibold text-stone-900">{productData.manufactureDate || 'Xem chi tiết trên bao bì'}</td>
-                      </tr>
-                      {productData.usageGuide && (
-                        <tr>
-                          <td className="py-3 px-4 font-bold text-stone-600 align-top">Hướng dẫn sử dụng</td>
-                          <td className="py-3 px-4 text-stone-700 leading-relaxed whitespace-pre-line">{productData.usageGuide}</td>
-                        </tr>
-                      )}
-                      {productData.storageGuide && (
-                        <tr className="bg-stone-50/50">
-                          <td className="py-3 px-4 font-bold text-stone-600 align-top">Bảo quản</td>
-                          <td className="py-3 px-4 text-stone-700 leading-relaxed whitespace-pre-line">{productData.storageGuide}</td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Key Benefits */}
-                {productData.benefits && productData.benefits.length > 0 && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-                    {productData.benefits.map((benefit, i) => (
-                      <div key={i} className="p-4 rounded-xl bg-emerald-50/60 border border-emerald-100 flex items-start gap-2.5">
-                        <CheckCircle2 className="w-4 h-4 text-[#174C3C] shrink-0 mt-0.5" />
-                        <span className="text-xs text-stone-700 font-medium">{benefit}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
+            {/* 4 MỤC BỔ SUNG TRONG BẢN CÔNG BỐ */}
+            <div className="space-y-6 pt-4 border-t border-stone-200">
+              
+              {/* CÂU CHUYỆN SẢN PHẨM */}
+              <div className="space-y-2">
+                <h4 className="text-sm font-black text-stone-900 uppercase tracking-wide">
+                  CÂU CHUYỆN SẢN PHẨM
+                </h4>
+                <p className="text-xs sm:text-sm text-stone-700 leading-relaxed bg-stone-50 p-4 rounded-xl border border-stone-200 whitespace-pre-line">
+                  {productData.story || 'Kẹo dừa dẻo Ngọc Hải là sản phẩm truyền thống đậm đà bản sắc của Hộ Kinh Doanh Đặng Ngọc Hải.'}
+                </p>
               </div>
-            )}
 
-            {/* Tab 2: Standards & Food Safety Registrations */}
-            {activeTab === 'standards' && (
-              <div className="bg-white rounded-3xl p-6 sm:p-8 border border-stone-200 shadow-sm space-y-6">
-
-                <div className="border-b border-stone-100 pb-4">
-                  <span className="text-xs font-bold uppercase tracking-wider text-[#174C3C]">
-                    Hạng Mục 02 &bull; Minh Bạch Pháp Lý
-                  </span>
-                  <h2 className="text-xl font-bold text-[#19241F] mt-1">
-                    Số Công Bố Sản Phẩm &amp; Giấy Chứng Nhận ATTP
-                  </h2>
-                </div>
-
-                <div className="space-y-4">
-                  {productData.standards && productData.standards.length > 0 ? (
-                    productData.standards.map((std, idx) => (
-                      <div
-                        key={idx}
-                        className="p-5 rounded-2xl bg-stone-50 border border-stone-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-[#174C3C]/10 text-[#174C3C] flex items-center justify-center shrink-0">
-                            <FileCheck className="w-5 h-5" />
-                          </div>
-                          <div>
-                            <p className="text-xs text-stone-500 font-medium">{std.label}</p>
-                            <p className="text-sm font-bold text-stone-900 font-mono mt-0.5">{std.value}</p>
-                          </div>
-                        </div>
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2.5 py-1 rounded-full shrink-0">
-                          <Check className="w-3 h-3" />
-                          <span>Hợp chuẩn hợp quy</span>
-                        </span>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-xs text-stone-500 italic">Chưa có hồ sơ tiêu chuẩn nào được cập nhật.</p>
-                  )}
-                </div>
-
-                <div className="p-4 rounded-2xl bg-[#DFCA9B]/20 border border-[#DFCA9B]/50 text-xs text-stone-800 leading-relaxed">
-                  <strong>Lưu ý cho người tiêu dùng:</strong> Mọi thông tin tự công bố và cam kết an toàn thực phẩm trên đã được đối chiếu và lưu trữ đầy đủ trong cơ sở dữ liệu xác thực điện tử của hệ thống VCheck.
-                </div>
-
+              {/* NGUYÊN LIỆU ĐẦU VÀO */}
+              <div className="space-y-2">
+                <h4 className="text-sm font-black text-stone-900 uppercase tracking-wide">
+                  NGUYÊN LIỆU ĐẦU VÀO
+                </h4>
+                <p className="text-xs sm:text-sm text-stone-700 leading-relaxed bg-stone-50 p-4 rounded-xl border border-stone-200 whitespace-pre-line">
+                  {productData.rawMaterials || '50% cơm dừa tươi nguyên chất tuyển chọn, đường mía tự nhiên, mạch nha nếp thơm ngọt, hạt mè rang giòn và bánh tráng mè nướng.'}
+                </p>
               </div>
-            )}
 
-            {/* Tab 3: Google Map Location */}
-            {activeTab === 'map' && (
-              <div className="bg-white rounded-3xl p-6 sm:p-8 border border-stone-200 shadow-sm space-y-4">
-
-                <div className="border-b border-stone-100 pb-3">
-                  <span className="text-xs font-bold uppercase tracking-wider text-[#174C3C]">
-                    Hạng Mục 03 &bull; Tọa Độ Vùng Sản Xuất
-                  </span>
-                  <h2 className="text-xl font-bold text-[#19241F] mt-1">
-                    Bản Đồ Nơi Sản Xuất — {productData.manufacturer?.name || 'Cơ sở sản xuất'}
-                  </h2>
-                  <p className="text-xs text-stone-500 mt-1">
-                    Địa chỉ: {productData.manufacturer?.address || 'Đang cập nhật'}
-                  </p>
-                </div>
-
-                <div className="rounded-2xl overflow-hidden border border-stone-200 shadow-inner h-[380px] w-full bg-stone-100 flex items-center justify-center">
-                  {productData.mapEmbed ? (() => {
-                    // Hỗ trợ cả link src thuần và thẻ <iframe ...> đầy đủ
-                    const rawEmbed = productData.mapEmbed.trim();
-                    const srcMatch = rawEmbed.match(/src=["']([^"']+)["']/);
-                    const iframeSrc = srcMatch ? srcMatch[1] : rawEmbed;
-                    return (
+              {/* BẢN ĐỒ VÙNG NGUYÊN LIỆU / NƠI SẢN XUẤT */}
+              <div className="space-y-2">
+                <h4 className="text-sm font-black text-stone-900 uppercase tracking-wide">
+                  BẢN ĐỒ VÙNG NGUYÊN LIỆU / NƠI SẢN XUẤT
+                </h4>
+                <div className="p-3 bg-stone-50 rounded-xl border border-stone-200 text-xs text-stone-700">
+                  <p className="font-semibold mb-2">Địa chỉ: {productData.manufacturer?.address || 'Thôn Thắng Đông, xã Quế Sơn, thành phố Đà Nẵng'}</p>
+                  {productData.mapEmbed && (
+                    <div className="rounded-lg overflow-hidden h-64 border border-stone-200">
                       <iframe
-                        title={`Bản đồ ${productData.name}`}
-                        src={iframeSrc}
+                        title="Bản đồ nơi sản xuất"
+                        src={productData.mapEmbed.includes('src=') ? (productData.mapEmbed.match(/src=["']([^"']+)["']/)?.[1] || productData.mapEmbed) : productData.mapEmbed}
                         width="100%"
                         height="100%"
                         style={{ border: 0 }}
                         allowFullScreen
                         loading="lazy"
-                        referrerPolicy="no-referrer-when-downgrade"
                       />
-                    );
-                  })() : (
-                    <div className="text-center p-6 text-stone-500 space-y-2">
-                      <MapPin className="w-8 h-8 text-stone-400 mx-auto" />
-                      <p className="text-xs">Chưa có link nhúng Google Maps cho sản phẩm này.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* HÌNH ẢNH SẢN PHẨM */}
+              <div className="space-y-2">
+                <h4 className="text-sm font-black text-stone-900 uppercase tracking-wide">
+                  HÌNH ẢNH SẢN PHẨM
+                </h4>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {galleryImages.map((img, i) => (
+                    <div key={i} className="aspect-square rounded-xl overflow-hidden border border-stone-200 bg-stone-50 p-2 flex items-center justify-center">
+                      <img src={img} alt={`${productData.name} ${i + 1}`} className="w-full h-full object-contain" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+        )}
+
+        {/* VIEW MODE 2: MODERN RICH INTERACTIVE VIEW */}
+        {viewMode === 'modern' && (
+          <div className="space-y-8">
+            
+            {/* Top 2-Column Grid: Visual & Producer (Left) + Specifications (Right) */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+
+              {/* Left Column (5 cols): Photo, Verification Badge, Manufacturer Card */}
+              <div className="lg:col-span-5 space-y-6">
+
+                {/* Real Product Image Showcase */}
+                <div className="bg-white rounded-3xl p-6 border border-stone-200 shadow-sm relative group overflow-hidden">
+                  <div
+                    onClick={() => setLightboxImg(productData.image || '/assets/keo_dua_ngoc_hai_spec.png')}
+                    className="relative aspect-square rounded-2xl overflow-hidden bg-stone-50 flex items-center justify-center cursor-zoom-in"
+                  >
+                    <img
+                      src={productData.image || '/assets/keo_dua_ngoc_hai_spec.png'}
+                      alt={productData.name}
+                      className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-500"
+                    />
+                    <div className="absolute bottom-3 right-3 p-2 rounded-xl bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                      <ZoomIn className="w-4 h-4" />
+                    </div>
+                  </div>
+
+                  {/* Verification Status Pill */}
+                  <div className="mt-4 pt-4 border-t border-stone-100 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                      <span className="text-xs font-bold text-stone-700">Tem chính hãng dntrace.com</span>
+                    </div>
+                    <span className="text-[11px] font-semibold text-[#84CC16] bg-[#0f2d22] px-2.5 py-1 rounded-lg">
+                      Đã kiểm định
+                    </span>
+                  </div>
+                </div>
+
+                {/* Manufacturer Card (THÔNG TIN ĐƠN VỊ/ NHÀ SẢN XUẤT) */}
+                <div className="bg-white rounded-3xl p-6 border border-stone-200 shadow-sm space-y-4">
+                  <div className="flex items-center gap-3 pb-3 border-b border-stone-100">
+                    <div className="w-10 h-10 rounded-xl bg-[#0f2d22]/10 text-[#0f2d22] flex items-center justify-center shrink-0">
+                      <ShieldCheck className="w-6 h-6 text-[#0f2d22]" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-[#0f2d22] text-sm uppercase tracking-wide">
+                        THÔNG TIN ĐƠN VỊ/ NHÀ SẢN XUẤT
+                      </h3>
+                      <p className="text-[11px] text-stone-500">Chủ sở hữu &amp; chịu trách nhiệm chất lượng</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 text-xs text-stone-700">
+                    <div>
+                      <span className="text-stone-500 block text-[11px]">Tên đơn vị:</span>
+                      <span className="font-bold text-stone-900 text-sm">{productData.manufacturer?.name || 'Hộ Kinh Doanh Đặng Ngọc Hải'}</span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 pt-1">
+                      <div className="p-2.5 rounded-xl bg-stone-50 border border-stone-100">
+                        <span className="text-stone-500 block text-[10px] uppercase font-semibold">Quốc gia</span>
+                        <span className="font-bold text-stone-900 text-xs mt-0.5 block">{productData.manufacturer?.country || 'Việt Nam'}</span>
+                      </div>
+                      <div className="p-2.5 rounded-xl bg-stone-50 border border-stone-100">
+                        <span className="text-stone-500 block text-[10px] uppercase font-semibold">Số XNCK ATTP</span>
+                        <span className="font-mono font-bold text-[#0f2d22] text-xs mt-0.5 block">{productData.manufacturer?.attpCode || '11/XNCK-KTHT'}</span>
+                      </div>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl bg-stone-50 border border-stone-100">
+                      <span className="text-stone-500 block text-[10px] uppercase font-semibold">Số đăng ký kinh doanh</span>
+                      <span className="font-mono font-bold text-stone-900 text-xs mt-0.5 block">{productData.manufacturer?.businessId || '049189001652'}</span>
+                    </div>
+
+                    {productData.manufacturer?.address && (
+                      <div className="flex items-start gap-2 pt-1">
+                        <MapPin className="w-4 h-4 text-[#0f2d22] shrink-0 mt-0.5" />
+                        <div>
+                          <span className="text-stone-500 block text-[11px]">Địa chỉ liên lạc:</span>
+                          <span className="font-medium text-stone-800">{productData.manufacturer.address}</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {productData.manufacturer?.phone && (
+                      <div className="flex items-center gap-2 pt-1">
+                        <Phone className="w-4 h-4 text-[#0f2d22] shrink-0" />
+                        <div>
+                          <span className="text-stone-500 block text-[11px]">Di động:</span>
+                          <a
+                            href={`tel:${productData.manufacturer.phone.replace(/\s+/g, '')}`}
+                            className="font-bold text-[#0f2d22] hover:underline"
+                          >
+                            {productData.manufacturer.phone}
+                          </a>
+                        </div>
+                      </div>
+                    )}
+
+                    {productData.manufacturer?.website && (
+                      <div className="flex items-center gap-2 pt-1">
+                        <Globe className="w-4 h-4 text-[#0f2d22] shrink-0" />
+                        <div>
+                          <span className="text-stone-500 block text-[11px]">Website:</span>
+                          <a
+                            href={productData.manufacturer.website.startsWith('http') ? productData.manufacturer.website : `http://${productData.manufacturer.website}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-[#0f2d22] font-semibold hover:underline flex items-center gap-1"
+                          >
+                            <span>{productData.manufacturer.website}</span>
+                            <ExternalLink className="w-3 h-3" />
+                          </a>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {productData.manufacturer?.phone && (
+                    <div className="pt-2">
+                      <a
+                        href={`tel:${productData.manufacturer.phone.replace(/\s+/g, '')}`}
+                        className="w-full py-3 rounded-xl bg-[#0f2d22] hover:bg-[#164332] text-white text-xs font-bold flex items-center justify-center gap-2 shadow transition"
+                      >
+                        <Phone className="w-4 h-4 text-[#84CC16]" />
+                        <span>Gọi Trực Tiếp Đặt Hàng: {productData.manufacturer.phone}</span>
+                      </a>
                     </div>
                   )}
                 </div>
 
               </div>
-            )}
 
-            {/* Vạn Phúc Hoa Solution Provider Callout Banner */}
-            <div className="p-6 rounded-3xl bg-[#174C3C]/5 border border-[#174C3C]/20 flex flex-col sm:flex-row items-center justify-between gap-6">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-[#174C3C] text-[#DFCA9B] flex items-center justify-center shrink-0 shadow-md">
-                  <QrCode className="w-6 h-6" />
+              {/* Right Column (7 cols): THÔNG TIN SẢN PHẨM Table & Specs */}
+              <div className="lg:col-span-7 space-y-6">
+
+                {/* THÔNG TIN SẢN PHẨM Card */}
+                <div className="bg-white rounded-3xl p-6 sm:p-8 border border-stone-200 shadow-sm space-y-6">
+                  
+                  <div className="border-b border-stone-100 pb-4 flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-black uppercase tracking-wider text-[#0f2d22]">
+                        HẠNG MỤC 01
+                      </span>
+                      <h2 className="text-xl sm:text-2xl font-black text-stone-900 mt-0.5 uppercase">
+                        THÔNG TIN SẢN PHẨM
+                      </h2>
+                    </div>
+                    <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold flex items-center gap-1">
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Hợp chuẩn CBSP</span>
+                    </span>
+                  </div>
+
+                  {/* Thành phần Box */}
+                  <div className="p-5 rounded-2xl bg-[#F8F7F3] border border-stone-200/80 space-y-2">
+                    <div className="flex items-center gap-2 text-xs font-bold text-[#0f2d22]">
+                      <Sparkles className="w-4 h-4 text-[#84CC16]" />
+                      <span>Thành phần công thức:</span>
+                    </div>
+                    <p className="text-xs sm:text-sm text-stone-800 leading-relaxed font-semibold whitespace-pre-line">
+                      {productData.ingredients || 'Dừa 50%, đường, mạch nha, bánh tráng, mè'}
+                    </p>
+                  </div>
+
+                  {/* Specs Table covering ALL fields from Image 1 */}
+                  <div className="overflow-hidden rounded-2xl border border-stone-200">
+                    <table className="w-full text-left text-xs sm:text-sm">
+                      <tbody className="divide-y divide-stone-100">
+                        <tr className="bg-stone-50/60">
+                          <td className="py-3 px-4 font-bold text-stone-600 w-2/5">Tên sản phẩm</td>
+                          <td className="py-3 px-4 font-bold text-stone-900">{productData.name}</td>
+                        </tr>
+                        <tr>
+                          <td className="py-3 px-4 font-bold text-stone-600">Số TCBSP</td>
+                          <td className="py-3 px-4 font-mono font-bold text-[#0f2d22]">{productData.tcbsp || 'Số TCBSP: 01/NGOHAI/2026'}</td>
+                        </tr>
+                        <tr className="bg-stone-50/60">
+                          <td className="py-3 px-4 font-bold text-stone-600">Số Tiêu chuẩn</td>
+                          <td className="py-3 px-4 text-stone-700">{productData.standardCode || '—'}</td>
+                        </tr>
+                        <tr>
+                          <td className="py-3 px-4 font-bold text-stone-600">Ngày sản xuất</td>
+                          <td className="py-3 px-4 font-semibold text-stone-900">{productData.manufactureDate || 'Xem trên bao bì'}</td>
+                        </tr>
+                        <tr className="bg-stone-50/60">
+                          <td className="py-3 px-4 font-bold text-stone-600">Thời hạn sử dụng</td>
+                          <td className="py-3 px-4 font-semibold text-stone-900">{productData.expiry || 'đang cập nhật'}</td>
+                        </tr>
+                        <tr>
+                          <td className="py-3 px-4 font-bold text-stone-600">Khối lượng tịnh</td>
+                          <td className="py-3 px-4 font-semibold text-stone-900">{productData.netWeight || 'đang cập nhật'}</td>
+                        </tr>
+                        <tr className="bg-stone-50/60">
+                          <td className="py-3 px-4 font-bold text-stone-600 align-top">Hướng dẫn sử dụng</td>
+                          <td className="py-3 px-4 text-stone-700 leading-relaxed whitespace-pre-line">{productData.usageGuide || 'xem chi tiết trên bao bì'}</td>
+                        </tr>
+                        <tr>
+                          <td className="py-3 px-4 font-bold text-stone-600 align-top">Bảo quản</td>
+                          <td className="py-3 px-4 text-stone-700 leading-relaxed whitespace-pre-line">{productData.storageGuide || 'Bảo quản ở nơi khô ráo thoáng mát tránh ánh nắng trực tiếp'}</td>
+                        </tr>
+                        <tr className="bg-stone-50/60">
+                          <td className="py-3 px-4 font-bold text-stone-600">Cảnh báo</td>
+                          <td className="py-3 px-4 text-stone-700">{productData.warning || '—'}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Legal Standards Badges */}
+                  <div className="pt-2">
+                    <p className="text-xs font-bold text-stone-500 uppercase tracking-wider mb-2.5">
+                      Hồ sơ pháp lý &amp; Tiêu chuẩn đã đối soát:
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200/80 text-xs">
+                        <span className="text-[10px] text-emerald-800 font-semibold block">Tự công bố (TCBSP)</span>
+                        <strong className="text-emerald-950 font-mono">{productData.tcbsp ? productData.tcbsp.replace(/Số\s*TCBSP:\s*/i, '') : '01/NGOHAI/2026'}</strong>
+                      </div>
+                      <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200/80 text-xs">
+                        <span className="text-[10px] text-emerald-800 font-semibold block">Số XNCK ATTP</span>
+                        <strong className="text-emerald-950 font-mono">{productData.manufacturer?.attpCode || '11/XNCK-KTHT'}</strong>
+                      </div>
+                      <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200/80 text-xs">
+                        <span className="text-[10px] text-emerald-800 font-semibold block">Số ĐKKD</span>
+                        <strong className="text-emerald-950 font-mono">{productData.manufacturer?.businessId || '049189001652'}</strong>
+                      </div>
+                    </div>
+                  </div>
+
                 </div>
-                <div>
-                  <p className="text-xs font-bold text-[#174C3C] uppercase tracking-wider">
-                    Đơn Vị Phát Triển &amp; Cung Cấp Giải Pháp QR
-                  </p>
-                  <h4 className="text-base font-bold text-[#19241F] mt-0.5">
-                    {productData.provider || 'Công Ty TNHH MTV Vạn Phúc Hoa'}
+
+              </div>
+
+            </div>
+
+            {/* 4 DEDICATED SECTIONS AS HIGHLIGHTED IN IMAGE 1 */}
+            <div className="space-y-6 pt-4">
+
+              {/* Navigation Tabs for the 4 Sections */}
+              <div className="flex items-center gap-2 p-1.5 rounded-2xl bg-stone-200/70 border border-stone-200 overflow-x-auto">
+                <button
+                  onClick={() => setActiveTab('all')}
+                  className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition whitespace-nowrap cursor-pointer ${
+                    activeTab === 'all' ? 'bg-[#0f2d22] text-white shadow-sm' : 'text-stone-700 hover:text-stone-900'
+                  }`}
+                >
+                  Tất cả các mục
+                </button>
+                <button
+                  onClick={() => setActiveTab('story')}
+                  className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                    activeTab === 'story' ? 'bg-[#0f2d22] text-white shadow-sm' : 'text-stone-700 hover:text-stone-900'
+                  }`}
+                >
+                  <BookOpen className="w-3.5 h-3.5" />
+                  <span>CÂU CHUYỆN SẢN PHẨM</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('raw')}
+                  className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                    activeTab === 'raw' ? 'bg-[#0f2d22] text-white shadow-sm' : 'text-stone-700 hover:text-stone-900'
+                  }`}
+                >
+                  <Wheat className="w-3.5 h-3.5" />
+                  <span>NGUYÊN LIỆU ĐẦU VÀO</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('map')}
+                  className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                    activeTab === 'map' ? 'bg-[#0f2d22] text-white shadow-sm' : 'text-stone-700 hover:text-stone-900'
+                  }`}
+                >
+                  <Compass className="w-3.5 h-3.5" />
+                  <span>BẢN ĐỒ VÙNG NGUYÊN LIỆU / NƠI SẢN XUẤT</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('gallery')}
+                  className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                    activeTab === 'gallery' ? 'bg-[#0f2d22] text-white shadow-sm' : 'text-stone-700 hover:text-stone-900'
+                  }`}
+                >
+                  <ImageIcon className="w-3.5 h-3.5" />
+                  <span>HÌNH ẢNH SẢN PHẨM</span>
+                </button>
+              </div>
+
+              {/* 1. CÂU CHUYỆN SẢN PHẨM */}
+              {(activeTab === 'all' || activeTab === 'story') && (
+                <div className="bg-white rounded-3xl p-6 sm:p-8 border border-stone-200 shadow-sm space-y-4">
+                  <div className="flex items-center gap-2.5 pb-3 border-b border-stone-100">
+                    <div className="w-9 h-9 rounded-xl bg-[#84CC16]/20 text-[#0f2d22] flex items-center justify-center font-bold">
+                      <BookOpen className="w-5 h-5 text-[#0f2d22]" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-black text-stone-900 uppercase tracking-tight">
+                        CÂU CHUYỆN SẢN PHẨM
+                      </h3>
+                      <p className="text-xs text-stone-500">Hương vị quê hương và tâm huyết người làm nghề</p>
+                    </div>
+                  </div>
+
+                  <div className="p-6 rounded-2xl bg-gradient-to-br from-[#F8F7F3] to-stone-100/70 border border-stone-200/80">
+                    <p className="text-xs sm:text-sm text-stone-800 leading-relaxed whitespace-pre-line font-medium">
+                      {productData.story || `Kẹo dừa dẻo Ngọc Hải là đặc sản gia truyền của Hộ Kinh Doanh Đặng Ngọc Hải tại Quế Sơn. Với sự kết hợp tinh tế giữa 50% cơm dừa bánh tẻ béo bùi, vị ngọt thanh của mạch nha nếp và lớp mè rang thơm vàng trên bánh tráng nướng giòn rụm, từng miếng kẹo dẻo thơm mang đậm hương vị truyền thống quê hương xứ Quảng.`}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* 2. NGUYÊN LIỆU ĐẦU VÀO */}
+              {(activeTab === 'all' || activeTab === 'raw') && (
+                <div className="bg-white rounded-3xl p-6 sm:p-8 border border-stone-200 shadow-sm space-y-4">
+                  <div className="flex items-center gap-2.5 pb-3 border-b border-stone-100">
+                    <div className="w-9 h-9 rounded-xl bg-[#84CC16]/20 text-[#0f2d22] flex items-center justify-center font-bold">
+                      <Wheat className="w-5 h-5 text-[#0f2d22]" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-black text-stone-900 uppercase tracking-tight">
+                        NGUYÊN LIỆU ĐẦU VÀO
+                      </h3>
+                      <p className="text-xs text-stone-500">Minh bạch nguồn gốc xuất xứ nguyên liệu sạch</p>
+                    </div>
+                  </div>
+
+                  <div className="p-6 rounded-2xl bg-[#F8F7F3] border border-stone-200/80 space-y-4">
+                    <p className="text-xs sm:text-sm text-stone-800 leading-relaxed whitespace-pre-line font-medium">
+                      {productData.rawMaterials || `Cơm dừa tươi 50% tuyển chọn từ các vùng dừa sạch, đường mía nguyên chất, mạch nha nếp thơm ngọt, hạt mè mẩy rang giòn và bánh tráng mè nướng thủ công.`}
+                    </p>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+                      <div className="p-3.5 rounded-xl bg-white border border-stone-200 text-xs">
+                        <span className="font-bold text-[#0f2d22] block mb-1">🥥 Cơm dừa tươi 50%</span>
+                        <p className="text-stone-600 text-[11px]">Dừa bánh tẻ độ dẻo và béo thơm tự nhiên</p>
+                      </div>
+                      <div className="p-3.5 rounded-xl bg-white border border-stone-200 text-xs">
+                        <span className="font-bold text-[#0f2d22] block mb-1">🌾 Mạch nha nếp &amp; Đường mía</span>
+                        <p className="text-stone-600 text-[11px]">Vị ngọt thanh tao, không gắt, không chất tạo ngọt</p>
+                      </div>
+                      <div className="p-3.5 rounded-xl bg-white border border-stone-200 text-xs">
+                        <span className="font-bold text-[#0f2d22] block mb-1">🥢 Mè rang &amp; Bánh tráng nướng</span>
+                        <p className="text-stone-600 text-[11px]">Nướng giòn truyền thống tạo kết cấu giòn dẻo</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 3. BẢN ĐỒ VÙNG NGUYÊN LIỆU / NƠI SẢN XUẤT */}
+              {(activeTab === 'all' || activeTab === 'map') && (
+                <div className="bg-white rounded-3xl p-6 sm:p-8 border border-stone-200 shadow-sm space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-stone-100 flex-wrap gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-xl bg-[#84CC16]/20 text-[#0f2d22] flex items-center justify-center font-bold">
+                        <Compass className="w-5 h-5 text-[#0f2d22]" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-black text-stone-900 uppercase tracking-tight">
+                          BẢN ĐỒ VÙNG NGUYÊN LIỆU / NƠI SẢN XUẤT
+                        </h3>
+                        <p className="text-xs text-stone-500">Định vị GPS tọa độ cơ sở sản xuất</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 text-xs text-stone-600 font-medium">
+                      <MapPin className="w-4 h-4 text-[#0f2d22]" />
+                      <span>{productData.manufacturer?.address || 'Thôn Thắng Đông, xã Quế Sơn, thành phố Đà Nẵng'}</span>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl overflow-hidden border border-stone-200 shadow-inner h-[400px] w-full bg-stone-100 flex items-center justify-center">
+                    {productData.mapEmbed ? (() => {
+                      const rawEmbed = productData.mapEmbed.trim();
+                      const srcMatch = rawEmbed.match(/src=["']([^"']+)["']/);
+                      const iframeSrc = srcMatch ? srcMatch[1] : rawEmbed;
+                      return (
+                        <iframe
+                          title={`Bản đồ ${productData.name}`}
+                          src={iframeSrc}
+                          width="100%"
+                          height="100%"
+                          style={{ border: 0 }}
+                          allowFullScreen
+                          loading="lazy"
+                          referrerPolicy="no-referrer-when-downgrade"
+                        />
+                      );
+                    })() : (
+                      <div className="text-center p-6 text-stone-500 space-y-2">
+                        <MapPin className="w-8 h-8 text-stone-400 mx-auto" />
+                        <p className="text-xs">Chưa có liên kết bản đồ nhúng Google Maps cho sản phẩm này.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* 4. HÌNH ẢNH SẢN PHẨM */}
+              {(activeTab === 'all' || activeTab === 'gallery') && (
+                <div className="bg-white rounded-3xl p-6 sm:p-8 border border-stone-200 shadow-sm space-y-4">
+                  <div className="flex items-center gap-2.5 pb-3 border-b border-stone-100">
+                    <div className="w-9 h-9 rounded-xl bg-[#84CC16]/20 text-[#0f2d22] flex items-center justify-center font-bold">
+                      <ImageIcon className="w-5 h-5 text-[#0f2d22]" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-black text-stone-900 uppercase tracking-tight">
+                        HÌNH ẢNH SẢN PHẨM
+                      </h3>
+                      <p className="text-xs text-stone-500">Hình ảnh bao bì thực tế và quy cách sản phẩm</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                    {galleryImages.map((img, idx) => (
+                      <div
+                        key={idx}
+                        onClick={() => setLightboxImg(img)}
+                        className="group relative aspect-4/3 rounded-2xl overflow-hidden bg-stone-50 border border-stone-200 shadow-sm hover:shadow-md transition cursor-zoom-in"
+                      >
+                        <img
+                          src={img}
+                          alt={`${productData.name} ảnh ${idx + 1}`}
+                          className="w-full h-full object-contain p-2 group-hover:scale-105 transition-transform duration-300"
+                        />
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white gap-1 text-xs font-semibold">
+                          <ZoomIn className="w-4 h-4" />
+                          <span>Xem ảnh lớn</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+            </div>
+
+            {/* Registration Callout Banner */}
+            <div className="p-6 sm:p-8 rounded-3xl bg-gradient-to-r from-[#0f2d22] to-[#194535] text-white flex flex-col md:flex-row items-start md:items-center justify-between gap-6 shadow-xl">
+              <div className="flex items-start sm:items-center gap-4">
+                <div className="w-14 h-14 rounded-2xl bg-[#84CC16] text-[#0f2d22] flex items-center justify-center shrink-0 font-black shadow-md">
+                  <QrCode className="w-8 h-8 text-[#0f2d22]" />
+                </div>
+                <div className="space-y-1">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-[#84CC16]">
+                    DÀNH CHO DOANH NGHIỆP &amp; HỢP TÁC XÃ
+                  </span>
+                  <h4 className="text-lg sm:text-xl font-black text-white">
+                    Đăng Ký Cấp Mã QR Truy Xuất Nguồn Gốc dntrace.com
                   </h4>
-                  <p className="text-xs text-stone-600 mt-0.5">
-                    Hỗ trợ doanh nghiệp &amp; HTX khởi tạo cổng truy xuất nguồn gốc tem QR VCheck chỉ từ 24h.
+                  <p className="text-xs text-stone-200 max-w-xl">
+                    Khởi tạo cổng truy xuất, tem chống giả và nhật ký sản xuất minh bạch cho sản phẩm của bạn chỉ trong 24 giờ.
                   </p>
                 </div>
               </div>
 
-              {onOpenConsultation && (
+              {onOpenQrRegister && (
                 <button
-                  onClick={() => onOpenConsultation(`Tư vấn giải pháp tem QR VCheck cho ${productData.name}`)}
-                  className="w-full sm:w-auto px-5 py-3 rounded-xl bg-[#174C3C] hover:bg-[#205F4D] text-white text-xs font-bold shadow-md transition-all shrink-0 cursor-pointer flex items-center justify-center gap-1.5"
+                  onClick={onOpenQrRegister}
+                  className="w-full md:w-auto px-6 py-3.5 rounded-xl bg-[#84CC16] hover:bg-[#74B843] text-[#0f2d22] font-black text-xs uppercase tracking-wider shadow-lg transition-all shrink-0 cursor-pointer flex items-center justify-center gap-2"
                 >
-                  <Sparkles className="w-3.5 h-3.5 text-[#DFCA9B]" />
-                  <span>Đăng Ký Cấp Mã QR Cho Sản Phẩm</span>
+                  <Sparkles className="w-4 h-4" />
+                  <span>Đăng Ký Cấp Mã QR Ngay</span>
                 </button>
               )}
             </div>
 
           </div>
-
-        </div>
+        )}
 
       </div>
+
+      {/* Image Lightbox Modal */}
+      {lightboxImg && (
+        <div
+          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setLightboxImg(null)}
+        >
+          <button
+            onClick={() => setLightboxImg(null)}
+            className="absolute top-5 right-5 p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition cursor-pointer"
+          >
+            <X className="w-6 h-6" />
+          </button>
+          <img
+            src={lightboxImg}
+            alt="Phóng to ảnh sản phẩm"
+            className="max-h-[90vh] max-w-[90vw] object-contain rounded-2xl shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
+
     </div>
   );
 }

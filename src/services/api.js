@@ -67,26 +67,81 @@ export async function loginAdmin(username, password) {
 }
 
 // ==========================================
-// CLOUDINARY UPLOAD HELPER
 // ==========================================
-export async function uploadImageToCloudinary(base64OrUrl) {
+// CLOUDINARY UPLOAD HELPERS
+// ==========================================
+
+// Helper to convert browser File object to Base64 Data URL
+export const fileToBase64 = (file) => {
+  return new Promise((resolve, reject) => {
+    if (typeof file === 'string') {
+      return resolve(file); // Already a URL or base64 string
+    }
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = (error) => reject(error);
+  });
+};
+
+// Upload a single image (accepts File object or Base64 string or URL)
+export async function uploadImageToCloudinary(fileOrBase64, folder = 'dntrace_products') {
   try {
+    const base64Data = await fileToBase64(fileOrBase64);
     const res = await fetch(`${API_BASE}/upload`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image: base64OrUrl, folder: 'vhh_products' })
+      body: JSON.stringify({ image: base64Data, folder })
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json.message || 'Lỗi tải ảnh lên Cloudinary');
     return json;
   } catch (err) {
     console.warn('Lỗi khi upload Cloudinary qua API:', err.message);
-    // Return base64 as fallback URL so user workflow is uninterrupted
+    const fallbackUrl = typeof fileOrBase64 === 'string' ? fileOrBase64 : await fileToBase64(fileOrBase64);
     return {
       success: true,
-      url: base64OrUrl,
+      url: fallbackUrl,
       storage: 'fallback_base64',
-      message: 'Lưu ảnh tạm thời (Chưa kết nối Cloudinary)'
+      message: 'Đã lưu ảnh tạm thời (Base64)'
+    };
+  }
+}
+
+// Upload multiple images in parallel (accepts Array of File objects or Base64 strings)
+export async function uploadMultipleImagesToCloudinary(filesOrBase64s, folder = 'dntrace_products') {
+  try {
+    const base64List = await Promise.all(
+      Array.from(filesOrBase64s).map(f => fileToBase64(f))
+    );
+
+    const res = await fetch(`${API_BASE}/upload-multiple`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ images: base64List, folder })
+    });
+
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.message || 'Lỗi tải danh sách ảnh lên Cloudinary');
+    return json;
+  } catch (err) {
+    console.warn('Lỗi upload batch, fallback tuần tự:', err.message);
+    // Fallback: Upload one by one
+    const results = [];
+    for (const item of filesOrBase64s) {
+      try {
+        const singleRes = await uploadImageToCloudinary(item, folder);
+        if (singleRes.url) results.push(singleRes.url);
+      } catch (e) {
+        console.error('Lỗi upload 1 ảnh:', e);
+      }
+    }
+    return {
+      success: results.length > 0,
+      urls: results,
+      count: results.length,
+      storage: 'mixed',
+      message: `Đã xử lý xong ${results.length} ảnh!`
     };
   }
 }
@@ -247,3 +302,76 @@ export async function seedProducts() {
     return { success: true, message: 'Đã nạp lại dữ liệu mẫu (Bộ nhớ tạm)!' };
   }
 }
+
+// ==========================================
+// QR CODE REGISTRATION REQUESTS
+// ==========================================
+let localQrRequests = [];
+
+export async function fetchQrRequests() {
+  try {
+    const res = await fetch(`${API_BASE}/qr-requests`);
+    if (!res.ok) throw new Error('Lỗi tải yêu cầu cấp mã QR');
+    const json = await res.json();
+    return { data: json.data || [], count: json.count || 0 };
+  } catch (err) {
+    return { data: localQrRequests, count: localQrRequests.length };
+  }
+}
+
+export async function submitQrRequest(requestData) {
+  try {
+    const res = await fetch(`${API_BASE}/qr-requests`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestData)
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.message || 'Lỗi gửi yêu cầu');
+    return json;
+  } catch (err) {
+    const newReq = {
+      ...requestData,
+      _id: 'local_qr_' + Date.now(),
+      status: 'pending',
+      createdAt: new Date().toISOString()
+    };
+    localQrRequests.unshift(newReq);
+    return { success: true, message: 'Đã tiếp nhận yêu cầu đăng ký cấp mã QR thành công!', data: newReq };
+  }
+}
+
+export async function updateQrRequestStatus(id, status, note) {
+  try {
+    const res = await fetch(`${API_BASE}/qr-requests/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status, note })
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.message || 'Lỗi cập nhật');
+    return json;
+  } catch (err) {
+    const found = localQrRequests.find(r => r._id === id);
+    if (found) {
+      if (status) found.status = status;
+      if (note) found.note = note;
+    }
+    return { success: true, message: 'Đã cập nhật yêu cầu thành công!' };
+  }
+}
+
+export async function deleteQrRequest(id) {
+  try {
+    const res = await fetch(`${API_BASE}/qr-requests/${id}`, {
+      method: 'DELETE'
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.message || 'Lỗi xoá yêu cầu');
+    return json;
+  } catch (err) {
+    localQrRequests = localQrRequests.filter(r => r._id !== id);
+    return { success: true, message: 'Đã xoá yêu cầu thành công!' };
+  }
+}
+
