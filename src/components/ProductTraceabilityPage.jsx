@@ -584,7 +584,7 @@ export default function ProductTraceabilityPage({
                     className="relative aspect-square rounded-2xl overflow-hidden bg-stone-50 flex items-center justify-center cursor-zoom-in"
                   >
                     <img
-                      src={productData.image || '/assets/keo_dua_ngoc_hai_spec.png'}
+                      src={productData.image}
                       alt={productData.name}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                     />

@@ -93,7 +93,7 @@ export default function AdminProductManager({
     provider: 'dntrace.com',
     status: 'ĐÃ XÁC THỰC THÀNH CÔNG',
     verificationCode: '',
-    image: '/assets/keo_dua_ngoc_hai_spec.png',
+    image: '',
     gallery: [],
     ingredients: '',
     tcbsp: '',
@@ -172,7 +172,7 @@ export default function AdminProductManager({
       provider: product.provider || 'dntrace.com',
       status: product.status || 'ĐÃ XÁC THỰC THÀNH CÔNG',
       verificationCode: product.verificationCode || '',
-      image: product.image || '/assets/keo_dua_ngoc_hai_spec.png',
+      image: product.image,
       gallery: product.gallery || [],
       ingredients: product.ingredients || '',
       tcbsp: product.tcbsp || '',
@@ -616,7 +616,7 @@ export default function AdminProductManager({
                             <div className="flex items-center gap-3">
                               <div className="w-12 h-12 rounded-xl bg-stone-100 border border-stone-200 overflow-hidden shrink-0 flex items-center justify-center">
                                 <img
-                                  src={p.image || '/assets/keo_dua_ngoc_hai_spec.png'}
+                                  src={p.image}
                                   alt={p.name}
                                   className="w-full h-full object-contain p-1"
                                 />
