@@ -290,16 +290,7 @@ export default function QrRegistrationModal({ isOpen, onClose, initialProductNam
         </div>
 
         {/* Modal Footer Call Hotline */}
-        <div className="bg-stone-50 px-6 py-3 border-t border-stone-100 flex items-center justify-between text-xs text-stone-600">
-          <span>Hỗ trợ kỹ thuật nhanh 24/7:</span>
-          <a
-            href="tel:0982101377"
-            className="font-bold text-[#174C3C] hover:underline flex items-center gap-1"
-          >
-            <Phone className="w-3 h-3 text-[#84CC16]" />
-            <span>0982.101.377</span>
-          </a>
-        </div>
+       
 
       </div>
     </div>

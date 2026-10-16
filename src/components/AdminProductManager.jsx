@@ -1355,7 +1355,7 @@ export default function AdminProductManager({
                           ...formData,
                           manufacturer: { ...formData.manufacturer, phone: e.target.value }
                         })}
-                        placeholder="Ví dụ: 0982.101.377"
+                        placeholder="Ví dụ: 0999.123.456"
                         className="w-full text-xs sm:text-sm p-3 rounded-xl border border-stone-200 outline-none focus:border-[#0f2d22] bg-white"
                       />
                     </div>

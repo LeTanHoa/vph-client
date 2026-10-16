@@ -97,24 +97,11 @@ export default function DNTraceFooter({ onOpenQrRegister, onNavigateToAdmin }) {
                 <span>Hệ thống: <strong className="text-white">dntrace.com</strong></span>
               </div>
               <div className="flex items-center gap-2">
-                <Phone className="w-4 h-4 text-[#84CC16] shrink-0" />
-                <span>Hotline: <strong className="text-white">0982.101.377</strong></span>
-              </div>
-              <div className="flex items-center gap-2">
                 <Mail className="w-4 h-4 text-[#84CC16] shrink-0" />
                 <span>Email: <strong className="text-white">hotro@dntrace.com</strong></span>
               </div>
             </div>
 
-            <div className="pt-2">
-              <button
-                onClick={onNavigateToAdmin}
-                className="inline-flex items-center gap-1.5 text-xs font-semibold text-stone-400 hover:text-white transition cursor-pointer"
-              >
-                <Lock className="w-3.5 h-3.5" />
-                <span>Khu vực quản trị hệ thống (/admin)</span>
-              </button>
-            </div>
           </div>
 
         </div>

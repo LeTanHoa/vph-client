@@ -15,8 +15,8 @@ import { loginAdmin } from '../services/api';
 import DNTraceLogo from './DNTraceLogo';
 
 export default function AdminLogin({ onLoginSuccess, onBackToTraceability }) {
-  const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('admin');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -40,11 +40,7 @@ export default function AdminLogin({ onLoginSuccess, onBackToTraceability }) {
     }
   };
 
-  const fillDefaultCredentials = () => {
-    setUsername('admin');
-    setPassword('admin');
-    setErrorMessage('');
-  };
+
 
   return (
     <div className="min-h-[85vh] flex items-center justify-center p-4 sm:p-6 bg-[#F8F7F3]">
@@ -66,7 +62,7 @@ export default function AdminLogin({ onLoginSuccess, onBackToTraceability }) {
 
         {/* Brand Header */}
         <div className="text-center space-y-3">
-          <div className="flex justify-center">
+          <div className="flex justify-center bg-green-900 rounded-xl  ">
             <DNTraceLogo className="h-9" pillBackground={true} />
           </div>
           <h2 className="text-2xl font-black text-stone-900 tracking-tight">
@@ -86,23 +82,7 @@ export default function AdminLogin({ onLoginSuccess, onBackToTraceability }) {
         )}
 
         {/* Credentials hint */}
-        <div className="p-3.5 rounded-2xl bg-[#84CC16]/15 border border-[#84CC16]/30 flex items-center justify-between text-xs text-stone-700">
-          <div className="space-y-0.5">
-            <p className="font-bold text-[#0f2d22] text-[11px] uppercase tracking-wider">
-              Tài khoản quản trị thử nghiệm:
-            </p>
-            <p className="font-mono text-xs">
-              Tài khoản: <strong>admin</strong> | Mật khẩu: <strong>admin</strong>
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={fillDefaultCredentials}
-            className="px-2.5 py-1 rounded-lg bg-white text-[#0f2d22] text-[11px] font-bold border border-stone-200 shadow-sm hover:bg-stone-50 transition cursor-pointer"
-          >
-            Tự điền
-          </button>
-        </div>
+          
 
         {/* Login Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
