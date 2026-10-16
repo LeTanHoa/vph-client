@@ -31,7 +31,7 @@ import Footer from './components/Footer';
 import { fetchApiStatus, isUserLoggedIn, clearLoginSession } from './services/api';
 
 export default function App() {
-  // Determine initial view from window.location.pathname
+
   const getInitialView = () => {
     if (typeof window !== 'undefined') {
       const path = window.location.pathname.toLowerCase();

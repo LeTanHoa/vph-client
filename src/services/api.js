@@ -1,6 +1,6 @@
 import { defaultSeedProducts } from '../data/seedData.js';
 
-const API_BASE = '/api';
+const API_BASE = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
 
 // Fallback products in case backend is offline
 let localFallbackProducts = JSON.parse(JSON.stringify(defaultSeedProducts)).map((p, idx) => ({
