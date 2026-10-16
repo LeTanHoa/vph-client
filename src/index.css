@@ -1,0 +1,119 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --primary: #174C3C;
+    --primary-light: #246B55;
+    --primary-dark: #0F3328;
+    --sage: #7BAE82;
+    --sage-light: #A3CCA9;
+    --gold: #C7A66A;
+    --gold-light: #DFCA9B;
+    --bg-cream: #F8F7F3;
+    --bg-card: #FFFFFF;
+    --dark-text: #19221D;
+    --muted-text: #5A6961;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    font-family: 'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+
+  body {
+    background-color: #F8F7F3;
+    color: #19221D;
+    overflow-x: hidden;
+  }
+}
+
+/* Custom Utilities & Polish */
+.font-serif-accent {
+  font-family: 'Playfair Display', Georgia, serif;
+}
+
+.text-gradient-emerald {
+  background: linear-gradient(135deg, #174C3C 0%, #2F7C63 50%, #174C3C 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.text-gradient-gold {
+  background: linear-gradient(135deg, #A88344 0%, #DFCA9B 50%, #C7A66A 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(23, 76, 60, 0.08);
+}
+
+.glass-card-dark {
+  background: rgba(23, 76, 60, 0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(123, 174, 130, 0.2);
+}
+
+.subtle-shadow {
+  box-shadow: 0 10px 30px -10px rgba(23, 76, 60, 0.07), 0 4px 6px -2px rgba(23, 76, 60, 0.04);
+}
+
+.hover-lift {
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.hover-lift:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 20px 35px -10px rgba(23, 76, 60, 0.12);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #F3EFE6;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #B6CBB9;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #7BAE82;
+}
+
+/* Animations */
+@keyframes floatSlow {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-8px) rotate(1deg);
+  }
+}
+
+.animate-float-slow {
+  animation: floatSlow 7s ease-in-out infinite;
+}
+
+@keyframes pulseSubtle {
+  0%, 100% {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.02);
+  }
+}
+
+.animate-pulse-subtle {
+  animation: pulseSubtle 4s ease-in-out infinite;
+}
