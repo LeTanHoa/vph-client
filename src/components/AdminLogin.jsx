@@ -133,7 +133,7 @@ export default function AdminLogin({ onLoginSuccess, onBackToTraceability }) {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Nhập mật khẩu (admin)"
+                placeholder="Nhập mật khẩu"
                 className="w-full pl-10 pr-10 py-2.5 text-xs rounded-xl border border-stone-300 focus:outline-none focus:border-[#174C3C] focus:ring-1 focus:ring-[#174C3C] bg-stone-50/50 font-mono"
               />
               <button
